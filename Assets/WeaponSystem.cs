@@ -31,9 +31,28 @@ public class WeaponSystem : MonoBehaviour
     {
         player = FindObjectOfType<PlayerController>();
 
+        // Ensure at least one weapon exists
+        if (availableWeapons == null || availableWeapons.Length == 0)
+        {
+            availableWeapons = new WeaponData[1];
+            availableWeapons[0] = new WeaponData
+            {
+                weaponName = "Default",
+                fireRate = 4f,
+                projectileSpeed = 14f,
+                damage = 8f,
+                projectileCount = 1,
+                spreadAngle = 0f,
+                isActive = true,
+                level = 1,
+                projectilePrefab = null // will be created at runtime if null
+            };
+        }
+
         // Initialize weapon dictionary
         foreach (WeaponData weapon in availableWeapons)
         {
+            if (string.IsNullOrEmpty(weapon.weaponName)) weapon.weaponName = "Weapon" + Random.Range(0, 9999);
             weaponDictionary[weapon.weaponName] = weapon;
             lastFireTimes[weapon.weaponName] = 0f;
         }
@@ -43,11 +62,21 @@ public class WeaponSystem : MonoBehaviour
         {
             availableWeapons[0].isActive = true;
         }
+
+        // Fallback firePoint: use player's transform if none assigned
+        if (firePoint == null && player != null)
+        {
+            firePoint = player.transform;
+        }
     }
 
     void Update()
     {
         if (player == null || !player.IsAlive()) return;
+
+        // If PlayerController is using simple shooting, do not auto-fire
+    var pc = player != null ? player.GetComponent<PlayerController>() : null;
+    if (pc != null && pc.IsSimpleShootingEnabled()) return;
 
         // Auto-fire active weapons
         foreach (WeaponData weapon in availableWeapons)
@@ -70,7 +99,7 @@ public class WeaponSystem : MonoBehaviour
 
     void FireWeapon(WeaponData weapon)
     {
-        if (weapon.projectilePrefab == null || firePoint == null) return;
+    if (firePoint == null) return;
 
         // Find nearest enemy for targeting
         Enemy nearestEnemy = FindNearestEnemy();
@@ -89,24 +118,88 @@ public class WeaponSystem : MonoBehaviour
                 fireDirection = Quaternion.Euler(0f, 0f, angleOffset) * targetDirection;
             }
 
-            // Create projectile
-            GameObject projectile = Instantiate(weapon.projectilePrefab, firePoint.position, Quaternion.identity);
-            Projectile projectileComponent = projectile.GetComponent<Projectile>();
+            SpawnProjectile(weapon, fireDirection);
+        }
+    }
 
-            if (projectileComponent != null)
+    // Manual fire towards a world point (e.g., mouse position)
+    public void ManualFireAt(Vector3 worldPos)
+    {
+        if (availableWeapons == null || availableWeapons.Length == 0)
+        {
+            Debug.LogWarning("WeaponSystem: No available weapons configured.");
+            return;
+        }
+        foreach (var weapon in availableWeapons)
+        {
+            if (!weapon.isActive) continue;
+            if (Time.time - lastFireTimes[weapon.weaponName] < 1f / weapon.fireRate) continue;
+
+            if (firePoint == null) continue;
+
+            Vector2 targetDir = ((Vector2)worldPos - (Vector2)firePoint.position).normalized;
+
+            for (int i = 0; i < weapon.projectileCount; i++)
             {
-                projectileComponent.Initialize(fireDirection, weapon.projectileSpeed, weapon.damage);
-            }
-            else
-            {
-                // Basic projectile movement (2D)
-                Rigidbody2D rb = projectile.GetComponent<Rigidbody2D>();
-                if (rb != null)
+                Vector2 fireDirection = targetDir;
+                if (weapon.spreadAngle > 0f && weapon.projectileCount > 1)
                 {
-                    rb.velocity = fireDirection * weapon.projectileSpeed;
+                    float angleOffset = (weapon.spreadAngle / (weapon.projectileCount - 1)) * (i - (weapon.projectileCount - 1) / 2f);
+                    fireDirection = Quaternion.Euler(0f, 0f, angleOffset) * targetDir;
                 }
+
+                SpawnProjectile(weapon, fireDirection);
+            }
+
+            lastFireTimes[weapon.weaponName] = Time.time;
+        }
+    }
+
+    void SpawnProjectile(WeaponData weapon, Vector2 fireDirection)
+    {
+        GameObject projectile;
+        if (weapon.projectilePrefab != null)
+        {
+            projectile = Instantiate(weapon.projectilePrefab, firePoint.position, Quaternion.identity);
+        }
+        else
+        {
+            projectile = CreateRuntimeProjectile();
+        }
+
+        if (projectile == null) return;
+        var projectileComponent = projectile.GetComponent<Projectile>();
+        if (projectileComponent != null)
+        {
+            projectileComponent.Initialize(fireDirection, weapon.projectileSpeed, weapon.damage);
+        }
+        else
+        {
+            var rb = projectile.GetComponent<Rigidbody2D>();
+            if (rb != null)
+            {
+                rb.velocity = fireDirection * weapon.projectileSpeed;
             }
         }
+    }
+
+    GameObject CreateRuntimeProjectile()
+    {
+        // Create a simple 2D projectile at runtime (fallback)
+        var go = new GameObject("RuntimeProjectile");
+        go.transform.position = firePoint.position;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.color = Color.white;
+        sr.sprite = null; // optional: can assign a default sprite
+        var circle = go.AddComponent<CircleCollider2D>();
+        circle.isTrigger = true;
+        circle.radius = 0.12f;
+        var rb = go.AddComponent<Rigidbody2D>();
+        rb.gravityScale = 0f;
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        var proj = go.AddComponent<Projectile>();
+        // proj will be initialized by caller
+        return go;
     }
 
     Enemy FindNearestEnemy()

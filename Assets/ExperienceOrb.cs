@@ -6,8 +6,8 @@ public class ExperienceOrb : MonoBehaviour
 {
     [Header("Orb Settings")]
     public float experienceValue = 10f;
-    public float moveSpeed = 5f;
-    public float lifetime = 10f;
+    public float moveSpeed = 6f;
+    public float lifetime = 14f;
     public float pickupRange = 0.5f;
 
     [Header("Visual")]
@@ -21,8 +21,8 @@ public class ExperienceOrb : MonoBehaviour
 
     void Start()
     {
-        spawnTime = Time.time;
-        Destroy(gameObject, lifetime);
+    spawnTime = Time.time;
+    Destroy(gameObject, lifetime);
     }
 
     void Update()
@@ -41,8 +41,7 @@ public class ExperienceOrb : MonoBehaviour
         }
         else
         {
-            // Gentle floating animation (2D)
-            transform.position += Vector3.up * Mathf.Sin(Time.time * 2f) * 0.01f;
+            // Stay in place until attracted
         }
     }
 
@@ -51,13 +50,13 @@ public class ExperienceOrb : MonoBehaviour
         experienceValue = value;
 
         // Scale orb based on value
-        float scale = Mathf.Log10(value) * 0.5f + 1f;
+    float scale = Mathf.Log10(Mathf.Max(10f, value)) * 0.25f + 0.9f;
         transform.localScale = Vector3.one * scale;
 
         // Adjust light intensity
         if (orbLight != null)
         {
-            orbLight.intensity = scale;
+            orbLight.intensity = Mathf.Lerp(0.8f, 2.2f, Mathf.InverseLerp(0.9f, 1.8f, scale));
         }
     }
 

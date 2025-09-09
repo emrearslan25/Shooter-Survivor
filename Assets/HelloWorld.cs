@@ -48,11 +48,15 @@ public class GameManager : MonoBehaviour
 
     void InitializeGame()
     {
-        // Create player
+        // Create player (prefab or runtime)
         if (playerPrefab != null)
         {
             GameObject playerObj = Instantiate(playerPrefab, playerStartPosition, Quaternion.identity);
             player = playerObj.GetComponent<PlayerController>();
+        }
+        else
+        {
+            player = CreateRuntimePlayer(playerStartPosition);
         }
 
         // Initialize systems
@@ -68,6 +72,15 @@ public class GameManager : MonoBehaviour
 
         if (upgradePanel != null)
             upgradePanel.SetActive(false);
+
+        // Ensure camera follows player
+        var cam = Camera.main;
+        if (cam != null)
+        {
+            var follow = cam.GetComponent<CameraFollow>();
+            if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow>();
+            follow.target = player != null ? player.transform : null;
+        }
     }
 
     void UpdateSpawning()
@@ -86,21 +99,29 @@ public class GameManager : MonoBehaviour
 
     void SpawnEnemy()
     {
-        if (enemyPrefabs.Length == 0) return;
-
-        // Random enemy type
-        int randomIndex = Random.Range(0, enemyPrefabs.Length);
-        GameObject enemyPrefab = enemyPrefabs[randomIndex];
-
         // Random position around the player (2D)
         Vector2 spawnPos = GetRandomSpawnPosition();
-        GameObject enemyObj = Instantiate(enemyPrefab, spawnPos, Quaternion.identity);
 
-        Enemy enemy = enemyObj.GetComponent<Enemy>();
-        if (enemy != null)
+        if (enemyPrefabs != null && enemyPrefabs.Length > 0 && enemyPrefabs[0] != null)
         {
-            enemy.Initialize(player.transform);
-            enemies.Add(enemy);
+            int randomIndex = Random.Range(0, enemyPrefabs.Length);
+            GameObject enemyPrefab = enemyPrefabs[randomIndex];
+            GameObject enemyObj = Instantiate(enemyPrefab, spawnPos, Quaternion.identity);
+            Enemy enemy = enemyObj.GetComponent<Enemy>();
+            if (enemy != null)
+            {
+                enemy.Initialize(player.transform);
+                enemies.Add(enemy);
+            }
+        }
+        else
+        {
+            Enemy enemy = CreateRuntimeEnemy(spawnPos);
+            if (enemy != null)
+            {
+                enemy.Initialize(player.transform);
+                enemies.Add(enemy);
+            }
         }
     }
 
@@ -157,5 +178,79 @@ public class GameManager : MonoBehaviour
         isGameRunning = false;
         Debug.Log("Game Over!");
         // Show game over screen
+    }
+
+    // ---------- Runtime Creation Helpers ----------
+    PlayerController CreateRuntimePlayer(Vector2 position)
+    {
+        GameObject go = new GameObject("Player");
+        go.transform.position = position;
+        var rb2d = go.AddComponent<Rigidbody2D>();
+        rb2d.gravityScale = 0f;
+        rb2d.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        var col = go.AddComponent<CircleCollider2D>();
+        col.radius = 0.35f;
+
+        var pc = go.AddComponent<PlayerController>();
+        pc.manualControl = true;
+        pc.moveSpeed = 6f;
+        pc.useSimpleShooting = true;
+
+        // Visual
+    var visual = CreateCircleVisual("PlayerVisual", go.transform, new Color(0.1f, 0.9f, 0.9f, 1f), 0.4f, 28, 0.06f);
+    var vr = visual.GetComponent<Renderer>(); if (vr != null) vr.sortingOrder = 50;
+        pc.model = visual;
+
+        // FirePoint
+        var firePoint = new GameObject("FirePoint");
+        firePoint.transform.SetParent(go.transform, false);
+        firePoint.transform.localPosition = new Vector3(0.6f, 0f, 0f);
+        pc.firePoint = firePoint.transform;
+
+        return pc;
+    }
+
+    Enemy CreateRuntimeEnemy(Vector2 position)
+    {
+        GameObject go = new GameObject("Enemy");
+        go.transform.position = position;
+        var rb2d = go.AddComponent<Rigidbody2D>();
+        rb2d.gravityScale = 0f;
+        rb2d.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        var col = go.AddComponent<CircleCollider2D>();
+        col.radius = 0.32f;
+
+        var enemy = go.AddComponent<Enemy>();
+        enemy.moveSpeed = 2.2f;
+        enemy.maxHealth = 12f;
+        enemy.attackDamage = 6f;
+
+        // Visual
+    var visual = CreateCircleVisual("EnemyVisual", go.transform, new Color(1f, 0.3f, 0.3f, 1f), 0.38f, 24, 0.06f);
+    var vr = visual.GetComponent<Renderer>(); if (vr != null) vr.sortingOrder = 40;
+        enemy.model = visual;
+
+        return enemy;
+    }
+
+    GameObject CreateCircleVisual(string name, Transform parent, Color color, float radius, int segments, float width)
+    {
+        GameObject v = new GameObject(name);
+        v.transform.SetParent(parent, false);
+        var lr = v.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.positionCount = Mathf.Max(segments, 3);
+        lr.widthMultiplier = width;
+        lr.startColor = color; lr.endColor = color;
+    var m = new Material(Shader.Find("Sprites/Default"));
+    m.renderQueue = 3000; // Transparent
+    lr.material = m;
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float a = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius, 0f));
+        }
+        return v;
     }
 }

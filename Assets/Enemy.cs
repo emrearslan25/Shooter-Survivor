@@ -63,9 +63,13 @@ public class Enemy : MonoBehaviour
     {
         if (Time.time - lastAttackTime < attackCooldown) return;
 
-        float distance = Vector2.Distance(transform.position, target.position);
+    float distance = Vector2.Distance(transform.position, target.position);
+    // Account for collider radii so enemies can attack when touching the player's collider
+    float playerRadius = GetColliderRadius2D(target);
+    float myRadius = GetColliderRadius2D(transform);
+    float effectiveDistance = Mathf.Max(0f, distance - (playerRadius + myRadius));
 
-        if (distance <= attackRange)
+    if (effectiveDistance <= attackRange)
         {
             Attack();
             lastAttackTime = Time.time;
@@ -150,19 +154,67 @@ public class Enemy : MonoBehaviour
 
     void SpawnExperienceOrb()
     {
-        // Create experience orb prefab and spawn it
-        GameObject orbPrefab = Resources.Load<GameObject>("ExperienceOrb");
-        if (orbPrefab != null)
+        // Create orb at runtime (no prefab dependency)
+        GameObject orb = new GameObject("ExperienceOrb");
+        orb.transform.position = transform.position;
+
+        // Collider (trigger) so player can attract/pick
+        var col = orb.AddComponent<CircleCollider2D>();
+        col.isTrigger = true;
+        col.radius = 0.25f;
+
+        // Visual: pulsing ring using LineRenderer
+        var ring = new GameObject("Ring");
+        ring.transform.SetParent(orb.transform, false);
+        var lr = ring.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true; lr.positionCount = 28; lr.widthMultiplier = 0.05f;
+        lr.material = new Material(Shader.Find("Sprites/Default"));
+        lr.startColor = new Color(0.2f, 1f, 0.6f, 1f);
+        lr.endColor = lr.startColor;
+        float r = 0.22f;
+        for (int i = 0; i < lr.positionCount; i++)
         {
-            GameObject orb = Instantiate(orbPrefab, transform.position, Quaternion.identity);
-            ExperienceOrb orbComponent = orb.GetComponent<ExperienceOrb>();
-            if (orbComponent != null)
-            {
-                orbComponent.SetExperienceValue(experienceValue);
-            }
+            float a = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(a) * r, Mathf.Sin(a) * r, 0f));
         }
+
+        // Optional light for glow (works with 3D light)
+        var light = orb.AddComponent<Light>();
+        light.type = LightType.Point; light.color = new Color(0.2f, 1f, 0.6f, 1f); light.range = 2.5f; light.intensity = 1.4f;
+
+        var exp = orb.AddComponent<ExperienceOrb>();
+        exp.orbLight = light;
+        exp.SetExperienceValue(experienceValue);
     }
 
     public bool IsDead() => !isAlive;
     public float GetHealthPercentage() => currentHealth / maxHealth;
+
+    float GetColliderRadius2D(Transform t)
+    {
+        if (t == null) return 0f;
+        var circle = t.GetComponent<CircleCollider2D>();
+        if (circle != null) return Mathf.Abs(circle.radius) * Mathf.Max(t.lossyScale.x, t.lossyScale.y);
+        var box = t.GetComponent<BoxCollider2D>();
+        if (box != null)
+        {
+            Vector2 size = Vector2.Scale(box.size, t.lossyScale);
+            return size.magnitude * 0.25f; // approx
+        }
+        var capsule = t.GetComponent<CapsuleCollider2D>();
+        if (capsule != null)
+        {
+            float r = Mathf.Max(capsule.size.x, capsule.size.y) * 0.5f;
+            return r * Mathf.Max(t.lossyScale.x, t.lossyScale.y);
+        }
+        // Fallback using renderer bounds if available
+        var sr = t.GetComponentInChildren<SpriteRenderer>();
+        if (sr != null)
+        {
+            var ext = sr.bounds.extents;
+            return new Vector2(ext.x, ext.y).magnitude * 0.5f;
+        }
+        return 0.5f; // default small radius
+    }
 }

@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class UpgradeSystem : MonoBehaviour
 {
@@ -35,8 +36,8 @@ public class UpgradeSystem : MonoBehaviour
     [Header("UI")]
     public GameObject upgradePanel;
     public Button[] upgradeButtons;
-    public Text[] upgradeNames;
-    public Text[] upgradeDescriptions;
+    public TMP_Text[] upgradeNames;
+    public TMP_Text[] upgradeDescriptions;
     public Image[] upgradeIcons;
 
     // State

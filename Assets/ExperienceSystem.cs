@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 
 public class ExperienceSystem : MonoBehaviour
 {
@@ -10,9 +12,9 @@ public class ExperienceSystem : MonoBehaviour
     public float xpMultiplier = 1.2f;
 
     [Header("UI")]
-    public UnityEngine.UI.Text levelText;
-    public UnityEngine.UI.Text xpText;
-    public UnityEngine.UI.Slider xpBar;
+    public TMP_Text levelText;
+    public TMP_Text xpText;
+    public Slider xpBar;
 
     // State
     private int currentLevel = 1;
@@ -34,6 +36,7 @@ public class ExperienceSystem : MonoBehaviour
     public void GainExperience(float amount)
     {
         currentXP += amount;
+    if (UIManager.Instance != null) UIManager.Instance.PulseXP();
 
         // Check for level up
         while (currentXP >= xpToNextLevel && currentLevel < maxLevel)

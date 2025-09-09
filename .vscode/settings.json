@@ -56,5 +56,5 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "blockbuster.sln"
+    "dotnet.defaultSolution": "Shooter-Survivor.sln"
 }

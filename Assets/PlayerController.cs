@@ -4,6 +4,17 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
+    [Header("Control Settings")]
+    public bool manualControl = true; // WASD + mouse aim
+    [Header("Simple Shooting")]
+    public bool useSimpleShooting = true; // if true, ignore WeaponSystem and shoot basic projectile on LMB
+    public Transform firePoint; // optional; if null, use player position
+    public GameObject projectilePrefab; // optional; if null, create runtime projectile
+    public float simpleFireRate = 6f;
+    public float simpleProjectileSpeed = 16f;
+    public float simpleDamage = 10f;
+    private float _lastSimpleShotTime = 0f;
+
     [Header("Movement Settings")]
     public float moveSpeed = 5f;
     public float rotationSpeed = 10f;
@@ -38,14 +49,27 @@ public class PlayerController : MonoBehaviour
 
         // Auto-pickup system
         InvokeRepeating("AutoPickupItems", 0f, 0.1f);
+
+        // Disable WeaponSystem if using simple shooting
+        if (useSimpleShooting && weaponSystem != null)
+        {
+            weaponSystem.enabled = false;
+        }
     }
 
     void Update()
     {
         if (!isAlive) return;
-
-        HandleMovement();
-        HandleAutoAim();
+        if (manualControl)
+        {
+            HandleInputMovement();
+            HandleMouseAimAndFire();
+        }
+        else
+        {
+            HandleMovement();
+            HandleAutoAim();
+        }
     }
 
     void FixedUpdate()
@@ -54,6 +78,118 @@ public class PlayerController : MonoBehaviour
 
         // Apply movement (2D)
         rb.MovePosition(rb.position + moveDirection * moveSpeed * Time.fixedDeltaTime);
+    }
+
+    // Manual Input Movement using WASD/Arrow keys
+    void HandleInputMovement()
+    {
+        float h = Input.GetAxisRaw("Horizontal"); // A/D or Left/Right
+        float v = Input.GetAxisRaw("Vertical");   // W/S or Up/Down
+        Vector2 input = new Vector2(h, v);
+        moveDirection = input.sqrMagnitude > 1f ? input.normalized : input;
+    }
+
+    // Mouse aim and left-click fire
+    void HandleMouseAimAndFire()
+    {
+        // Rotate to mouse
+        Vector3 mouseScreen = Input.mousePosition;
+        Vector3 mouseWorld = Camera.main != null ? Camera.main.ScreenToWorldPoint(mouseScreen) : Vector3.zero;
+        mouseWorld.z = 0f;
+
+        Vector2 toMouse = (mouseWorld - transform.position);
+        if (toMouse.sqrMagnitude > 0.0001f)
+        {
+            float angle = Mathf.Atan2(toMouse.y, toMouse.x) * Mathf.Rad2Deg;
+            transform.rotation = Quaternion.Euler(0f, 0f, angle);
+        }
+
+        // Fire while holding LMB
+        if (Input.GetMouseButton(0))
+        {
+            if (useSimpleShooting)
+            {
+                TrySimpleFire(mouseWorld);
+            }
+            else if (weaponSystem != null && weaponSystem.isActiveAndEnabled)
+            {
+                weaponSystem.ManualFireAt(mouseWorld);
+            }
+        }
+    }
+
+    void TrySimpleFire(Vector3 targetWorld)
+    {
+        if (Time.time - _lastSimpleShotTime < 1f / simpleFireRate) return;
+
+        Vector3 origin = firePoint != null ? firePoint.position : transform.position;
+        Vector2 dir = ((Vector2)targetWorld - (Vector2)origin).normalized;
+
+        GameObject proj = projectilePrefab != null ? Instantiate(projectilePrefab, origin, Quaternion.identity)
+                                                   : CreateRuntimeProjectile(origin);
+        if (proj == null) return;
+
+        var comp = proj.GetComponent<Projectile>();
+        if (comp != null)
+        {
+            comp.Initialize(dir, simpleProjectileSpeed, simpleDamage);
+        }
+        else
+        {
+            var rb2d = proj.GetComponent<Rigidbody2D>();
+            if (rb2d != null) rb2d.velocity = dir * simpleProjectileSpeed;
+        }
+
+        _lastSimpleShotTime = Time.time;
+    }
+
+    GameObject CreateRuntimeProjectile(Vector3 spawnPos)
+    {
+        var go = new GameObject("SimpleProjectile");
+        go.transform.position = spawnPos;
+        var sr = go.AddComponent<SpriteRenderer>();
+        // Create a tiny white square sprite at runtime so it's always visible
+        var tex = new Texture2D(8, 8, TextureFormat.RGBA32, false);
+        var cols = new Color32[8 * 8];
+        for (int i = 0; i < cols.Length; i++) cols[i] = new Color32(255, 255, 255, 255);
+        tex.SetPixels32(cols);
+        tex.Apply();
+        var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 64f);
+        sr.sprite = sprite;
+        sr.color = Color.white; // head color
+        // Ensure visible in 2D sorting
+        sr.sortingOrder = 10;
+
+        // Add a neon trail for visibility
+        var tr = go.AddComponent<TrailRenderer>();
+        tr.time = 0.18f;
+        tr.minVertexDistance = 0.01f;
+        tr.startWidth = 0.10f;
+        tr.endWidth = 0.02f;
+        var neon = new Gradient();
+        neon.SetKeys(
+            new GradientColorKey[] {
+                new GradientColorKey(new Color(0f, 1f, 1f, 1f), 0f),
+                new GradientColorKey(new Color(0.4f, 1f, 1f, 1f), 1f)
+            },
+            new GradientAlphaKey[] {
+                new GradientAlphaKey(0.9f, 0f),
+                new GradientAlphaKey(0f, 1f)
+            }
+        );
+        tr.colorGradient = neon;
+    var mat = new Material(Shader.Find("Sprites/Default"));
+    mat.renderQueue = 3000; // Transparent
+    tr.material = mat;
+    sr.material = mat;
+        var circle = go.AddComponent<CircleCollider2D>();
+        circle.isTrigger = true;
+        circle.radius = 0.12f;
+        var rb2d = go.AddComponent<Rigidbody2D>();
+        rb2d.gravityScale = 0f;
+        rb2d.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        go.AddComponent<Projectile>();
+        return go;
     }
 
     void HandleMovement()
@@ -89,7 +225,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // Rotate to face movement direction (2D)
-        if (moveDirection != Vector2.zero)
+    if (moveDirection != Vector2.zero && !manualControl)
         {
             float angle = Mathf.Atan2(moveDirection.y, moveDirection.x) * Mathf.Rad2Deg;
             transform.rotation = Quaternion.Euler(0f, 0f, angle);
@@ -155,6 +291,10 @@ public class PlayerController : MonoBehaviour
         {
             damageEffect.Play();
         }
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.FlashDamage();
+        }
 
         // Screen shake effect (2D)
         Camera.main.transform.position += (Vector3)Random.insideUnitCircle * 0.1f;
@@ -191,4 +331,5 @@ public class PlayerController : MonoBehaviour
     public bool IsAlive() => isAlive;
     public float GetHealthPercentage() => currentHealth / maxHealth;
     public Vector2 GetMoveDirection() => moveDirection;
+    public bool IsSimpleShootingEnabled() => useSimpleShooting;
 }
