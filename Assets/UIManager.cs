@@ -461,9 +461,16 @@ public class UIManager : MonoBehaviour
 
     public void ShowUpgradePanel()
     {
-        if (upgradePanel == null) return;
-        ShowPanelAnimated(upgradePanel);
-        Time.timeScale = 0f;
+    if (upgradePanel == null) return;
+    // Ensure layout, headers and buttons
+    LayoutPanelCentered(upgradePanel, upgradePanelSize);
+    EnsureUpgradeHeaderContent();
+    EnsureUpgradeButtons(3);
+    LayoutUpgradePanelTexts(upgradePanel);
+    LayoutUpgradeButtons(upgradePanel);
+
+    ShowPanelAnimated(upgradePanel);
+    Time.timeScale = 0f;
     }
 
     public void HideUpgradePanel()
@@ -471,6 +478,78 @@ public class UIManager : MonoBehaviour
         if (upgradePanel == null) return;
         HidePanelAnimated(upgradePanel);
         Time.timeScale = 1f;
+    }
+
+    // Ensure the upgrade panel has proper header texts and content
+    void EnsureUpgradeHeaderContent()
+    {
+        if (upgradePanel == null) return;
+
+        // Resolve or create title/description TMP texts
+        if (upgradeTitleText == null)
+        {
+            upgradeTitleText = TryResolveUpgradeTitle(upgradePanel);
+            if (upgradeTitleText == null)
+            {
+                var go = new GameObject("UpgradeTitle");
+                go.transform.SetParent(upgradePanel.transform, false);
+                upgradeTitleText = go.AddComponent<TextMeshProUGUI>();
+                // Basic TMP settings
+                upgradeTitleText.fontSize = baseFontSize + 8;
+                upgradeTitleText.alignment = TextAlignmentOptions.Center;
+                upgradeTitleText.enableAutoSizing = useAutoSizing;
+                var rt = go.GetComponent<RectTransform>();
+                rt.sizeDelta = new Vector2(upgradePanelSize.x - panelPadding * 2f, upgradeTitleHeight);
+            }
+        }
+
+        if (upgradeDescriptionText == null)
+        {
+            upgradeDescriptionText = TryResolveUpgradeDescription(upgradePanel);
+            if (upgradeDescriptionText == null)
+            {
+                var go = new GameObject("UpgradeSubtitle");
+                go.transform.SetParent(upgradePanel.transform, false);
+                upgradeDescriptionText = go.AddComponent<TextMeshProUGUI>();
+                upgradeDescriptionText.fontSize = baseFontSize + 2;
+                upgradeDescriptionText.alignment = TextAlignmentOptions.Center;
+                upgradeDescriptionText.enableAutoSizing = useAutoSizing;
+                upgradeDescriptionText.enableWordWrapping = true;
+                var rt = go.GetComponent<RectTransform>();
+                rt.sizeDelta = new Vector2(upgradePanelSize.x - panelPadding * 2f, upgradeDescHeight);
+            }
+        }
+
+        // Set text content: Level and subtitle
+        if (experienceSystem == null) experienceSystem = FindObjectOfType<ExperienceSystem>();
+        int lvl = experienceSystem != null ? experienceSystem.GetCurrentLevel() : 1;
+        if (upgradeTitleText != null) upgradeTitleText.text = $"Seviye {lvl}";
+        if (upgradeDescriptionText != null) upgradeDescriptionText.text = "Geliştirmeler";
+    }
+
+    void EnsureUpgradeButtons(int targetCount)
+    {
+        if (upgradePanel == null) return;
+        var existing = upgradePanel.GetComponentsInChildren<Button>(true);
+        int need = Mathf.Max(0, targetCount - (existing != null ? existing.Length : 0));
+        for (int i = 0; i < need; i++)
+        {
+            var btnGO = new GameObject($"UpgradeButton_{(existing.Length + i + 1)}");
+            btnGO.transform.SetParent(upgradePanel.transform, false);
+            var rt = btnGO.AddComponent<RectTransform>();
+            rt.sizeDelta = upgradeButtonSize;
+            var img = btnGO.AddComponent<Image>();
+            img.color = new Color(0.15f, 0.2f, 0.25f, 0.9f);
+            var btn = btnGO.AddComponent<Button>();
+            var colors = btn.colors; colors.normalColor = img.color; colors.highlightedColor = new Color(0.22f,0.28f,0.35f,1f); colors.pressedColor = new Color(0.12f,0.16f,0.2f,1f); btn.colors = colors;
+            // Label
+            var labelGO = new GameObject("Label");
+            labelGO.transform.SetParent(btnGO.transform, false);
+            var lrt = labelGO.AddComponent<RectTransform>();
+            lrt.anchorMin = new Vector2(0,0); lrt.anchorMax = new Vector2(1,1); lrt.offsetMin = new Vector2(12,8); lrt.offsetMax = new Vector2(-12,-8);
+            var tmp = labelGO.AddComponent<TextMeshProUGUI>();
+            tmp.alignment = TextAlignmentOptions.Center; tmp.fontSize = baseFontSize; tmp.text = "Seçenek";
+        }
     }
 
     void ShowPanelAnimated(GameObject panel)

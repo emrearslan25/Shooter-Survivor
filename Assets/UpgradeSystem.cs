@@ -58,9 +58,43 @@ public class UpgradeSystem : MonoBehaviour
     {
         currentOptions.Clear();
 
-        // Select random upgrades
-        List<UpgradeOption> availableOptions = new List<UpgradeOption>(availableUpgrades);
+        // Resolve upgradePanel from UIManager if not assigned
+        if (upgradePanel == null && UIManager.Instance != null)
+        {
+            upgradePanel = UIManager.Instance.upgradePanel;
+        }
 
+        // Show panel first so buttons exist (UIManager may auto-create them)
+        if (UIManager.Instance != null && UIManager.Instance.upgradePanel != null)
+        {
+            UIManager.Instance.ShowUpgradePanel();
+        }
+        else if (upgradePanel != null)
+        {
+            upgradePanel.SetActive(true);
+        }
+        else
+        {
+            Debug.LogWarning("UpgradeSystem: upgradePanel is not assigned and UIManager has none; cannot show.");
+        }
+
+        // Build selection pool (fallbacks if none configured)
+        List<UpgradeOption> pool = new List<UpgradeOption>();
+        if (availableUpgrades != null && availableUpgrades.Length > 0)
+        {
+            pool.AddRange(availableUpgrades);
+        }
+        else
+        {
+            pool.Add(new UpgradeOption { name = "Can +20", description = "Maksimum can +20", type = UpgradeType.Health, value = 20 });
+            pool.Add(new UpgradeOption { name = "Hız +1", description = "Hareket hızı +1", type = UpgradeType.Speed, value = 1 });
+            pool.Add(new UpgradeOption { name = "Hasar +5", description = "Mermi hasarı +5", type = UpgradeType.Damage, value = 5 });
+            pool.Add(new UpgradeOption { name = "Atış Hızı +1", description = "Daha hızlı ateş", type = UpgradeType.FireRate, value = 1 });
+            pool.Add(new UpgradeOption { name = "Toplama +1", description = "XP çekim menzili +1", type = UpgradeType.PickupRange, value = 1 });
+        }
+
+        // Select random upgrades
+        List<UpgradeOption> availableOptions = new List<UpgradeOption>(pool);
         for (int i = 0; i < Mathf.Min(upgradesPerLevel, availableOptions.Count); i++)
         {
             int randomIndex = Random.Range(0, availableOptions.Count);
@@ -68,19 +102,27 @@ public class UpgradeSystem : MonoBehaviour
             availableOptions.RemoveAt(randomIndex);
         }
 
-        // Update UI
+        // Update UI now that panel/buttons exist
         UpdateUpgradeUI();
 
-        // Show panel
-        if (upgradePanel != null)
-            upgradePanel.SetActive(true);
-
-        // Pause game
+        // Pause game (safety; GameManager also pauses)
         Time.timeScale = 0f;
     }
 
     void UpdateUpgradeUI()
     {
+        // Auto-discover buttons if not provided
+        if ((upgradeButtons == null || upgradeButtons.Length == 0) && upgradePanel != null)
+        {
+            upgradeButtons = upgradePanel.GetComponentsInChildren<Button>(true);
+        }
+
+        if (upgradeButtons == null || upgradeButtons.Length == 0)
+        {
+            Debug.LogWarning("UpgradeSystem: No upgrade buttons found. Assign in Inspector or place Buttons under upgradePanel.");
+            return;
+        }
+
         for (int i = 0; i < upgradeButtons.Length; i++)
         {
             if (i < currentOptions.Count)
@@ -88,13 +130,26 @@ public class UpgradeSystem : MonoBehaviour
                 UpgradeOption option = currentOptions[i];
 
                 // Update button text
-                if (upgradeNames[i] != null)
+                bool wroteLabel = false;
+                if (upgradeNames != null && i < upgradeNames.Length && upgradeNames[i] != null)
+                {
                     upgradeNames[i].text = option.name;
-
-                if (upgradeDescriptions[i] != null)
+                    wroteLabel = true;
+                }
+                if (upgradeDescriptions != null && i < upgradeDescriptions.Length && upgradeDescriptions[i] != null)
+                {
                     upgradeDescriptions[i].text = option.description;
+                }
+                if (!wroteLabel)
+                {
+                    var tmp = upgradeButtons[i].GetComponentInChildren<TMP_Text>(true);
+                    if (tmp != null)
+                    {
+                        tmp.text = option.name + "\n<size=80%>" + option.description + "</size>";
+                    }
+                }
 
-                if (upgradeIcons[i] != null && option.icon != null)
+                if (upgradeIcons != null && i < upgradeIcons.Length && upgradeIcons[i] != null && option.icon != null)
                     upgradeIcons[i].sprite = option.icon;
 
                 // Set button listener
@@ -120,16 +175,18 @@ public class UpgradeSystem : MonoBehaviour
 
         // Hide panel and resume game
         if (upgradePanel != null)
-            upgradePanel.SetActive(false);
+        {
+            if (UIManager.Instance != null)
+                UIManager.Instance.HideUpgradePanel();
+            else
+                upgradePanel.SetActive(false);
+        }
 
         Time.timeScale = 1f;
 
         // Notify game manager
-        GameManager gameManager = FindObjectOfType<GameManager>();
-        if (gameManager != null)
-        {
-            gameManager.ResumeGame();
-        }
+    GameManager gameManager = FindObjectOfType<GameManager>();
+    if (gameManager != null) gameManager.ResumeGame();
     }
 
     void ApplyUpgrade(UpgradeOption upgrade)

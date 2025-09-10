@@ -59,10 +59,15 @@ public class GameManager : MonoBehaviour
             player = CreateRuntimePlayer(playerStartPosition);
         }
 
-        // Initialize systems
-        weaponSystem = GetComponent<WeaponSystem>();
-        experienceSystem = GetComponent<ExperienceSystem>();
-        upgradeSystem = GetComponent<UpgradeSystem>();
+    // Initialize systems (be robust even if they are on different GameObjects)
+    weaponSystem = GetComponent<WeaponSystem>();
+    if (weaponSystem == null) weaponSystem = FindObjectOfType<WeaponSystem>();
+
+    experienceSystem = GetComponent<ExperienceSystem>();
+    if (experienceSystem == null) experienceSystem = FindObjectOfType<ExperienceSystem>();
+
+    upgradeSystem = GetComponent<UpgradeSystem>();
+    if (upgradeSystem == null) upgradeSystem = FindObjectOfType<UpgradeSystem>();
 
         // Start game
         isGameRunning = true;
@@ -140,6 +145,9 @@ public class GameManager : MonoBehaviour
 
     void UpdateGameState()
     {
+    // Re-resolve systems if missing
+    if (experienceSystem == null) experienceSystem = FindObjectOfType<ExperienceSystem>();
+    if (upgradeSystem == null) upgradeSystem = FindObjectOfType<UpgradeSystem>();
         // Remove dead enemies
         enemies.RemoveAll(e => e == null || e.IsDead());
 
@@ -152,11 +160,17 @@ public class GameManager : MonoBehaviour
 
     void PauseGameForUpgrade()
     {
+        // Stop game loop & pause time
         isGameRunning = false;
         Time.timeScale = 0f;
 
-        if (upgradePanel != null)
-            upgradePanel.SetActive(true);
+        // Delegate showing randomized options to UpgradeSystem
+        if (upgradeSystem == null)
+            upgradeSystem = GetComponent<UpgradeSystem>();
+        if (upgradeSystem != null)
+        {
+            upgradeSystem.OnLevelUp();
+        }
     }
 
     public void ResumeGame()
