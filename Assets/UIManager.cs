@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 
 public class UIManager : MonoBehaviour
@@ -20,6 +21,9 @@ public class UIManager : MonoBehaviour
     public Vector2 upgradeButtonSize = new Vector2(440, 60);
     public float upgradeButtonSpacing = 12f;
     public float panelPadding = 24f;
+    // New: fine-grained spacing for header/subtitle/buttons
+    public float headerSpacing = 8f;        // gap between title and subtitle
+    public float contentSpacing = 32f;      // gap between subtitle and buttons (increased to avoid overlap)
     [Header("XP Layout")]
     public bool xpTextAboveBar = true;
     public float xpTextSpacing = 8f;
@@ -50,7 +54,7 @@ public class UIManager : MonoBehaviour
     public TMP_Text upgradeTitleText;      // Optional: Title inside UpgradePanel
     public TMP_Text upgradeDescriptionText; // Optional: Description inside UpgradePanel
     public float upgradeTitleHeight = 60f;
-    public float upgradeDescHeight = 120f;
+    public float upgradeDescHeight = 40f; // tighter subtitle height so it sits just under title
 
     // References
     private PlayerController player;
@@ -72,6 +76,8 @@ public class UIManager : MonoBehaviour
         player = FindObjectOfType<PlayerController>();
         gameManager = FindObjectOfType<GameManager>();
         experienceSystem = FindObjectOfType<ExperienceSystem>();
+        EnsureEventSystem();
+        EnsureGraphicRaycaster();
 
         // Hide panels initially
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
@@ -87,8 +93,8 @@ public class UIManager : MonoBehaviour
             ApplyUILayout();
         }
 
-    EnsureCanvasGroups();
-    EnsureDamageOverlay();
+        EnsureCanvasGroups();
+        EnsureDamageOverlay();
     }
 
     void Update()
@@ -218,7 +224,7 @@ public class UIManager : MonoBehaviour
         SetRect(scoreText ? scoreText.GetComponent<RectTransform>() : null,
             new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-margin, margin), Vector2.zero);
 
-    // Bottom-Center: XP bar and text (from ExperienceSystem)
+        // Bottom-Center: XP bar and text (from ExperienceSystem)
         if (experienceSystem != null)
         {
             if (experienceSystem.xpBar != null)
@@ -240,8 +246,8 @@ public class UIManager : MonoBehaviour
                         barH = rt.rect.height;
                 }
                 float y = xpTextAboveBar ? (margin + barH + xpTextSpacing + xpTextExtraOffset) : margin;
-        SetRect(xpTextRt,
-            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, y), Vector2.zero);
+                SetRect(xpTextRt,
+                    new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, y), Vector2.zero);
             }
 
             EnsureXPSiblingOrder();
@@ -305,48 +311,61 @@ public class UIManager : MonoBehaviour
         Button[] buttons = panel.GetComponentsInChildren<Button>(true);
         if (buttons == null || buttons.Length == 0) return;
 
-        // Offset by header/description if present
-        float topOffset = panelPadding;
-        if (TryResolveUpgradeTitle(panel) != null) topOffset += upgradeTitleHeight + panelPadding;
-        if (TryResolveUpgradeDescription(panel) != null) topOffset += upgradeDescHeight + panelPadding;
-
-        float availableHeight = upgradePanelSize.y - topOffset - panelPadding; // bottom padding
-        float totalHeight = (buttons.Length * upgradeButtonSize.y) + ((buttons.Length - 1) * upgradeButtonSpacing);
-        totalHeight = Mathf.Min(totalHeight, availableHeight);
-        float startY = (availableHeight / 2f) - (upgradeButtonSize.y / 2f);
+        // Pin buttons to bottom of panel with fixed bottom padding
+        float bottomPadding = panelPadding;
+        float totalButtonHeight = (buttons.Length * upgradeButtonSize.y) + ((buttons.Length - 1) * upgradeButtonSpacing);
+        
+        // Start from bottom and work up
+        float startY = -(upgradePanelSize.y / 2f) + bottomPadding + (upgradeButtonSize.y / 2f);
 
         for (int i = 0; i < buttons.Length; i++)
         {
             var brt = buttons[i].GetComponent<RectTransform>();
             if (brt == null) continue;
-            // center within panel
-            SetRect(brt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, startY - i * (upgradeButtonSize.y + upgradeButtonSpacing)), upgradeButtonSize);
+            // Position from bottom up, with i=0 being the bottom-most button
+            float buttonY = startY + i * (upgradeButtonSize.y + upgradeButtonSpacing);
+            SetRect(brt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, buttonY), upgradeButtonSize);
+
+            // Ensure white button styling
+            var img = buttons[i].GetComponent<Image>();
+            if (img != null) img.color = Color.white;
+            var colors = buttons[i].colors; 
+            colors.normalColor = Color.white; 
+            colors.highlightedColor = new Color(0.95f, 0.95f, 0.95f, 1f); 
+            colors.pressedColor = new Color(0.9f, 0.9f, 0.9f, 1f);
+            colors.selectedColor = Color.white;
+            colors.disabledColor = new Color(1f,1f,1f,0.5f);
+            buttons[i].colors = colors;
 
             // Try to adjust TMP child label if any
             var tmp = buttons[i].GetComponentInChildren<TMP_Text>(true);
             if (tmp != null)
             {
                 SetTMP(tmp, TextAlignmentOptions.Center, baseFontSize);
+                tmp.color = Color.black; // contrast on white button
             }
         }
     }
 
     void LayoutUpgradePanelTexts(GameObject panel)
     {
-        var title = TryResolveUpgradeTitle(panel);
-        var desc = TryResolveUpgradeDescription(panel);
+        // Use the ensured header fields and validate they are not under a Button
+        var title = (!IsUnderButton(upgradeTitleText ? upgradeTitleText.transform : null)) ? upgradeTitleText : null;
+        var desc = (!IsUnderButton(upgradeDescriptionText ? upgradeDescriptionText.transform : null)) ? upgradeDescriptionText : null;
 
-        float y = (upgradePanelSize.y / 2f) - panelPadding - (upgradeTitleHeight / 2f);
+        // Position title at top of panel
+        float titleY = (upgradePanelSize.y / 2f) - panelPadding - (upgradeTitleHeight / 2f);
         if (title != null)
         {
             SetTMP(title, TextAlignmentOptions.Center, baseFontSize + 6);
             var rt = title.GetComponent<RectTransform>();
-            SetRect(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, y), new Vector2(upgradePanelSize.x - panelPadding * 2f, upgradeTitleHeight));
+            SetRect(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, titleY), new Vector2(upgradePanelSize.x - panelPadding * 2f, upgradeTitleHeight));
         }
 
         if (desc != null)
         {
-            float descY = y - (upgradeTitleHeight / 2f) - panelPadding - (upgradeDescHeight / 2f);
+            // Place subtitle right under title with small spacing
+            float descY = titleY - (upgradeTitleHeight / 2f) - headerSpacing - (upgradeDescHeight / 2f);
             SetTMP(desc, TextAlignmentOptions.Center, baseFontSize);
             desc.enableWordWrapping = true;
             var rt = desc.GetComponent<RectTransform>();
@@ -356,128 +375,69 @@ public class UIManager : MonoBehaviour
 
     TMP_Text TryResolveUpgradeTitle(GameObject panel)
     {
-        if (upgradeTitleText != null) return upgradeTitleText;
-        return FindChildTMPByNameContains(panel, "title");
+        if (upgradeTitleText != null && !IsUnderButton(upgradeTitleText.transform)) return upgradeTitleText;
+        // find a TMP named like title that is NOT under a button and preferably direct child of panel
+        TMP_Text best = null;
+        int bestDepth = int.MaxValue;
+        var tmps = panel.GetComponentsInChildren<TMP_Text>(true);
+        foreach (var t in tmps)
+        {
+            if (!t.name.ToLowerInvariant().Contains("title")) continue;
+            if (IsUnderButton(t.transform)) continue;
+            int depth = GetDepthRelativeTo(panel.transform, t.transform);
+            if (depth >= 0 && depth < bestDepth)
+            {
+                best = t; bestDepth = depth;
+            }
+        }
+        return best;
     }
 
     TMP_Text TryResolveUpgradeDescription(GameObject panel)
     {
-        if (upgradeDescriptionText != null) return upgradeDescriptionText;
-        var t = FindChildTMPByNameContains(panel, "desc");
-        if (t != null) return t;
-        return FindChildTMPByNameContains(panel, "description");
-    }
-
-    TMP_Text FindChildTMPByNameContains(GameObject root, string token)
-    {
-        if (root == null) return null;
-        token = token.ToLowerInvariant();
-        var tmps = root.GetComponentsInChildren<TMP_Text>(true);
-        foreach (var tmp in tmps)
-        {
-            if (tmp.name.ToLowerInvariant().Contains(token))
-                return tmp;
-        }
-        return null;
-    }
-
-    void ConfigureCanvasScaler()
-    {
-        var scaler = GetComponentInParent<CanvasScaler>();
-        if (scaler == null) scaler = FindObjectOfType<CanvasScaler>();
-        if (scaler == null) return;
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = referenceResolution;
-        scaler.matchWidthOrHeight = matchWidthOrHeight;
-    }
-
-    void LayoutPanelTextsCentered(GameObject panel)
-    {
-        if (panel == null) return;
-        // Try to place first two TMP texts as title + subtitle
+        if (upgradeDescriptionText != null && !IsUnderButton(upgradeDescriptionText.transform)) return upgradeDescriptionText;
+        // find a TMP named like desc/description that is NOT under a button and preferably direct child of panel
+        TMP_Text best = null;
+        int bestDepth = int.MaxValue;
         var tmps = panel.GetComponentsInChildren<TMP_Text>(true);
-        if (tmps == null || tmps.Length == 0) return;
-
-        float titleH = 64f;
-        float subtitleH = 40f;
-        float spacing = 12f;
-
-        // Title
-        var title = tmps[0];
-        SetTMP(title, TextAlignmentOptions.Center, baseFontSize + 10);
-        var rtTitle = title.GetComponent<RectTransform>();
-        SetRect(rtTitle, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, subtitleH/2f + spacing), new Vector2(gameOverPanelSize.x - panelPadding*2f, titleH));
-
-        // Subtitle if exists
-        if (tmps.Length > 1)
+        foreach (var t in tmps)
         {
-            var sub = tmps[1];
-            SetTMP(sub, TextAlignmentOptions.Center, baseFontSize + 2);
-            var rtSub = sub.GetComponent<RectTransform>();
-            SetRect(rtSub, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -(subtitleH/2f + spacing)), new Vector2(gameOverPanelSize.x - panelPadding*2f, subtitleH));
+            var n = t.name.ToLowerInvariant();
+            if (!(n.Contains("desc") || n.Contains("description"))) continue;
+            if (IsUnderButton(t.transform)) continue;
+            int depth = GetDepthRelativeTo(panel.transform, t.transform);
+            if (depth >= 0 && depth < bestDepth)
+            {
+                best = t; bestDepth = depth;
+            }
         }
+        return best;
     }
 
-    void EnsureXPSiblingOrder()
+    int GetDepthRelativeTo(Transform root, Transform t)
     {
-        if (experienceSystem == null) return;
-        if (experienceSystem.xpBar == null || experienceSystem.xpText == null) return;
-        var bar = experienceSystem.xpBar.transform as RectTransform;
-        var text = experienceSystem.xpText.transform as RectTransform;
-        if (bar == null || text == null) return;
-        if (text.parent != bar.parent) return; // they should be siblings under same Canvas/container
-
-        if (xpTextAboveBar)
+        if (root == null || t == null) return -1;
+        int depth = 0;
+        var cur = t.parent;
+        while (cur != null)
         {
-            // Make sure text renders after bar (higher sibling index)
-            int topIndex = Mathf.Max(bar.GetSiblingIndex(), text.GetSiblingIndex());
-            text.SetSiblingIndex(topIndex);
+            if (cur == root) return depth;
+            cur = cur.parent; depth++;
         }
-        else
+        return -1;
+    }
+
+    bool IsUnderButton(Transform t)
+    {
+        if (t == null) return false;
+        var cur = t;
+        while (cur != null)
         {
-            // Text under bar if overlay desired
-            int idx = Mathf.Min(bar.GetSiblingIndex(), text.GetSiblingIndex());
-            text.SetSiblingIndex(idx);
+            if (cur.GetComponent<Button>() != null) return true;
+            if (upgradePanel != null && cur == upgradePanel.transform) break;
+            cur = cur.parent;
         }
-    }
-
-    // ---------- Visual Polish Helpers ----------
-    void EnsureCanvasGroups()
-    {
-        AddCanvasGroupIfMissing(upgradePanel);
-        AddCanvasGroupIfMissing(gameOverPanel);
-        AddCanvasGroupIfMissing(pausePanel);
-    }
-
-    void AddCanvasGroupIfMissing(GameObject go)
-    {
-        if (go == null) return;
-        var cg = go.GetComponent<CanvasGroup>();
-        if (cg == null) cg = go.AddComponent<CanvasGroup>();
-        cg.alpha = go.activeSelf ? 1f : 0f;
-        cg.interactable = go.activeSelf;
-        cg.blocksRaycasts = go.activeSelf;
-    }
-
-    public void ShowUpgradePanel()
-    {
-    if (upgradePanel == null) return;
-    // Ensure layout, headers and buttons
-    LayoutPanelCentered(upgradePanel, upgradePanelSize);
-    EnsureUpgradeHeaderContent();
-    EnsureUpgradeButtons(3);
-    LayoutUpgradePanelTexts(upgradePanel);
-    LayoutUpgradeButtons(upgradePanel);
-
-    ShowPanelAnimated(upgradePanel);
-    Time.timeScale = 0f;
-    }
-
-    public void HideUpgradePanel()
-    {
-        if (upgradePanel == null) return;
-        HidePanelAnimated(upgradePanel);
-        Time.timeScale = 1f;
+        return false;
     }
 
     // Ensure the upgrade panel has proper header texts and content
@@ -485,8 +445,8 @@ public class UIManager : MonoBehaviour
     {
         if (upgradePanel == null) return;
 
-        // Resolve or create title/description TMP texts
-        if (upgradeTitleText == null)
+        // Resolve or create title/description TMP texts (avoid reusing ones under Buttons)
+        if (upgradeTitleText == null || IsUnderButton(upgradeTitleText.transform))
         {
             upgradeTitleText = TryResolveUpgradeTitle(upgradePanel);
             if (upgradeTitleText == null)
@@ -502,8 +462,9 @@ public class UIManager : MonoBehaviour
                 rt.sizeDelta = new Vector2(upgradePanelSize.x - panelPadding * 2f, upgradeTitleHeight);
             }
         }
+        if (upgradeTitleText != null) upgradeTitleText.raycastTarget = false;
 
-        if (upgradeDescriptionText == null)
+        if (upgradeDescriptionText == null || IsUnderButton(upgradeDescriptionText.transform))
         {
             upgradeDescriptionText = TryResolveUpgradeDescription(upgradePanel);
             if (upgradeDescriptionText == null)
@@ -519,6 +480,7 @@ public class UIManager : MonoBehaviour
                 rt.sizeDelta = new Vector2(upgradePanelSize.x - panelPadding * 2f, upgradeDescHeight);
             }
         }
+        if (upgradeDescriptionText != null) upgradeDescriptionText.raycastTarget = false;
 
         // Set text content: Level and subtitle
         if (experienceSystem == null) experienceSystem = FindObjectOfType<ExperienceSystem>();
@@ -539,9 +501,15 @@ public class UIManager : MonoBehaviour
             var rt = btnGO.AddComponent<RectTransform>();
             rt.sizeDelta = upgradeButtonSize;
             var img = btnGO.AddComponent<Image>();
-            img.color = new Color(0.15f, 0.2f, 0.25f, 0.9f);
+            img.color = Color.white; // white background
             var btn = btnGO.AddComponent<Button>();
-            var colors = btn.colors; colors.normalColor = img.color; colors.highlightedColor = new Color(0.22f,0.28f,0.35f,1f); colors.pressedColor = new Color(0.12f,0.16f,0.2f,1f); btn.colors = colors;
+            var colors = btn.colors; 
+            colors.normalColor = Color.white; 
+            colors.highlightedColor = new Color(0.95f,0.95f,0.95f,1f); 
+            colors.pressedColor = new Color(0.9f,0.9f,0.9f,1f); 
+            colors.selectedColor = Color.white;
+            colors.disabledColor = new Color(1f,1f,1f,0.5f);
+            btn.colors = colors;
             // Label
             var labelGO = new GameObject("Label");
             labelGO.transform.SetParent(btnGO.transform, false);
@@ -549,6 +517,8 @@ public class UIManager : MonoBehaviour
             lrt.anchorMin = new Vector2(0,0); lrt.anchorMax = new Vector2(1,1); lrt.offsetMin = new Vector2(12,8); lrt.offsetMax = new Vector2(-12,-8);
             var tmp = labelGO.AddComponent<TextMeshProUGUI>();
             tmp.alignment = TextAlignmentOptions.Center; tmp.fontSize = baseFontSize; tmp.text = "Seçenek";
+            tmp.raycastTarget = false;
+            tmp.color = Color.black; // black text on white button
         }
     }
 
@@ -556,6 +526,8 @@ public class UIManager : MonoBehaviour
     {
         if (panel == null) return;
         panel.SetActive(true);
+        // Ensure shown panel is on top
+        panel.transform.SetAsLastSibling();
         var cg = panel.GetComponent<CanvasGroup>();
         if (cg == null) cg = panel.AddComponent<CanvasGroup>();
         cg.alpha = 0f;
@@ -621,6 +593,8 @@ public class UIManager : MonoBehaviour
         rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.pivot = new Vector2(0.5f, 0.5f); rt.anchoredPosition = Vector2.zero; rt.sizeDelta = Vector2.zero;
         damageOverlay = go.AddComponent<Image>();
         damageOverlay.color = new Color(1f, 0f, 0f, 0f);
+        damageOverlay.raycastTarget = false;
+        go.transform.SetAsFirstSibling();
         go.SetActive(true);
     }
 
@@ -654,27 +628,161 @@ public class UIManager : MonoBehaviour
 
     public void PulseXP()
     {
-    if (!enableXPPulse) return;
-    if (experienceSystem == null || experienceSystem.xpText == null) return;
+        if (!enableXPPulse) return;
+        if (experienceSystem == null || experienceSystem.xpText == null) return;
+        
+        // Don't pulse if already pulsing to prevent stacking
+        if (experienceSystem.xpText.transform.localScale != Vector3.one) return;
+        
         StartCoroutine(Pulse(experienceSystem.xpText.rectTransform));
     }
 
     System.Collections.IEnumerator Pulse(RectTransform rt)
     {
         if (rt == null) yield break;
-        Vector3 start = rt.localScale;
-        Vector3 big = start * 1.12f;
-        float up = 0.08f, down = 0.12f; float t = 0f;
+        
+        // Force reset to normal scale first
+        rt.localScale = Vector3.one;
+        
+        Vector3 start = Vector3.one;
+        Vector3 big = start * 1.08f; // Reduced from 1.12f to prevent excessive scaling
+        float up = 0.06f, down = 0.10f; float t = 0f;
+        
         while (t < up)
         {
-            t += Time.unscaledDeltaTime; float k = t / up; rt.localScale = Vector3.LerpUnclamped(start, big, k); yield return null;
+            t += Time.unscaledDeltaTime; 
+            float k = t / up; 
+            rt.localScale = Vector3.LerpUnclamped(start, big, k); 
+            yield return null;
         }
+        
         t = 0f;
         while (t < down)
         {
-            t += Time.unscaledDeltaTime; float k = t / down; rt.localScale = Vector3.LerpUnclamped(big, start, k); yield return null;
+            t += Time.unscaledDeltaTime; 
+            float k = t / down; 
+            rt.localScale = Vector3.LerpUnclamped(big, start, k); 
+            yield return null;
         }
-        rt.localScale = start;
+        
+        // Ensure we end at exactly Vector3.one
+        rt.localScale = Vector3.one;
+    }
+
+    void EnsureEventSystem()
+    {
+        if (EventSystem.current == null)
+        {
+            var es = FindObjectOfType<EventSystem>();
+            if (es == null)
+            {
+                var go = new GameObject("EventSystem");
+                es = go.AddComponent<EventSystem>();
+                go.AddComponent<StandaloneInputModule>();
+            }
+        }
+    }
+
+    void EnsureGraphicRaycaster()
+    {
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas != null)
+        {
+            var raycaster = canvas.GetComponent<UnityEngine.UI.GraphicRaycaster>();
+            if (raycaster == null)
+            {
+                canvas.gameObject.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+            }
+        }
+    }
+
+    void ConfigureCanvasScaler()
+    {
+        var scaler = GetComponentInParent<CanvasScaler>();
+        if (scaler == null) scaler = FindObjectOfType<CanvasScaler>();
+        if (scaler == null) return;
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = referenceResolution;
+        scaler.matchWidthOrHeight = matchWidthOrHeight;
+    }
+
+    void LayoutPanelTextsCentered(GameObject panel)
+    {
+        if (panel == null) return;
+        var tmps = panel.GetComponentsInChildren<TMP_Text>(true);
+        if (tmps == null || tmps.Length == 0) return;
+
+        float titleH = 64f;
+        float subtitleH = 40f;
+        float spacing = 12f;
+
+        var title = tmps[0];
+        SetTMP(title, TextAlignmentOptions.Center, baseFontSize + 10);
+        var rtTitle = title.GetComponent<RectTransform>();
+        SetRect(rtTitle, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, subtitleH/2f + spacing), new Vector2(gameOverPanelSize.x - panelPadding*2f, titleH));
+
+        if (tmps.Length > 1)
+        {
+            var sub = tmps[1];
+            SetTMP(sub, TextAlignmentOptions.Center, baseFontSize + 2);
+            var rtSub = sub.GetComponent<RectTransform>();
+            SetRect(rtSub, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -(subtitleH/2f + spacing)), new Vector2(gameOverPanelSize.x - panelPadding*2f, subtitleH));
+        }
+    }
+
+    void EnsureXPSiblingOrder()
+    {
+        if (experienceSystem == null) return;
+        if (experienceSystem.xpBar == null || experienceSystem.xpText == null) return;
+        var bar = experienceSystem.xpBar.transform as RectTransform;
+        var text = experienceSystem.xpText.transform as RectTransform;
+        if (bar == null || text == null) return;
+        if (text.parent != bar.parent) return;
+
+        if (xpTextAboveBar)
+        {
+            int topIndex = Mathf.Max(bar.GetSiblingIndex(), text.GetSiblingIndex());
+            text.SetSiblingIndex(topIndex);
+        }
+        else
+        {
+            int idx = Mathf.Min(bar.GetSiblingIndex(), text.GetSiblingIndex());
+            text.SetSiblingIndex(idx);
+        }
+    }
+
+    void EnsureCanvasGroups()
+    {
+        AddCanvasGroupIfMissing(upgradePanel);
+        AddCanvasGroupIfMissing(gameOverPanel);
+        AddCanvasGroupIfMissing(pausePanel);
+    }
+
+    void AddCanvasGroupIfMissing(GameObject go)
+    {
+        if (go == null) return;
+        var cg = go.GetComponent<CanvasGroup>();
+        if (cg == null) cg = go.AddComponent<CanvasGroup>();
+        cg.alpha = go.activeSelf ? 1f : 0f;
+        cg.interactable = go.activeSelf;
+        cg.blocksRaycasts = go.activeSelf;
+    }
+
+    public void ShowUpgradePanel()
+    {
+        if (upgradePanel == null) return;
+        LayoutPanelCentered(upgradePanel, upgradePanelSize);
+        EnsureUpgradeHeaderContent();
+        EnsureUpgradeButtons(3);
+        LayoutUpgradePanelTexts(upgradePanel);
+        LayoutUpgradeButtons(upgradePanel);
+        ShowPanelAnimated(upgradePanel);
+    }
+
+    public void HideUpgradePanel()
+    {
+        if (upgradePanel == null) return;
+        HidePanelAnimated(upgradePanel);
     }
 
     // (Background-related code removed by request)

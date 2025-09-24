@@ -72,7 +72,12 @@ public class ExperienceSystem : MonoBehaviour
             levelText.text = $"Level {currentLevel}";
 
         if (xpText != null)
+        {
             xpText.text = $"{Mathf.FloorToInt(currentXP)} / {Mathf.FloorToInt(xpToNextLevel)} XP";
+            // Prevent text scaling issues by resetting scale
+            if (xpText.transform.localScale != Vector3.one)
+                xpText.transform.localScale = Vector3.one;
+        }
 
         if (xpBar != null)
             xpBar.value = currentXP / xpToNextLevel;

@@ -26,7 +26,8 @@ public class UpgradeSystem : MonoBehaviour
         FireRate,
         PickupRange,
         NewWeapon,
-        WeaponUpgrade
+        WeaponUpgrade,
+        Shield
     }
 
     [Header("Upgrade Settings")]
@@ -91,6 +92,11 @@ public class UpgradeSystem : MonoBehaviour
             pool.Add(new UpgradeOption { name = "Hasar +5", description = "Mermi hasarı +5", type = UpgradeType.Damage, value = 5 });
             pool.Add(new UpgradeOption { name = "Atış Hızı +1", description = "Daha hızlı ateş", type = UpgradeType.FireRate, value = 1 });
             pool.Add(new UpgradeOption { name = "Toplama +1", description = "XP çekim menzili +1", type = UpgradeType.PickupRange, value = 1 });
+            // Only add shield if player doesn't have it yet
+            if (player != null && !player.hasShield)
+            {
+                pool.Add(new UpgradeOption { name = "Koruyucu Kalkan", description = "Etrafında sarı kalkan oluştur", type = UpgradeType.Shield, value = 1 });
+            }
         }
 
         // Select random upgrades
@@ -134,11 +140,29 @@ public class UpgradeSystem : MonoBehaviour
                 if (upgradeNames != null && i < upgradeNames.Length && upgradeNames[i] != null)
                 {
                     upgradeNames[i].text = option.name;
+                    // Make shield upgrade name yellow
+                    if (option.type == UpgradeType.Shield)
+                    {
+                        upgradeNames[i].color = Color.yellow;
+                    }
+                    else
+                    {
+                        upgradeNames[i].color = Color.black;
+                    }
                     wroteLabel = true;
                 }
                 if (upgradeDescriptions != null && i < upgradeDescriptions.Length && upgradeDescriptions[i] != null)
                 {
                     upgradeDescriptions[i].text = option.description;
+                    // Make shield upgrade description yellow
+                    if (option.type == UpgradeType.Shield)
+                    {
+                        upgradeDescriptions[i].color = Color.yellow;
+                    }
+                    else
+                    {
+                        upgradeDescriptions[i].color = Color.black;
+                    }
                 }
                 if (!wroteLabel)
                 {
@@ -146,6 +170,16 @@ public class UpgradeSystem : MonoBehaviour
                     if (tmp != null)
                     {
                         tmp.text = option.name + "\n<size=80%>" + option.description + "</size>";
+                        
+                        // Make shield upgrade text yellow
+                        if (option.type == UpgradeType.Shield)
+                        {
+                            tmp.color = Color.yellow;
+                        }
+                        else
+                        {
+                            tmp.color = Color.black; // Default color for other upgrades
+                        }
                     }
                 }
 
@@ -209,8 +243,13 @@ public class UpgradeSystem : MonoBehaviour
                 break;
 
             case UpgradeType.Damage:
+                // Increase simple shooting damage if enabled
+                if (player != null && player.IsSimpleShootingEnabled())
+                {
+                    player.simpleDamage += upgrade.value;
+                }
                 // Global damage increase for all weapons
-                if (weaponSystem != null)
+                else if (weaponSystem != null)
                 {
                     WeaponSystem.WeaponData[] weapons = weaponSystem.GetActiveWeapons();
                     foreach (WeaponSystem.WeaponData weapon in weapons)
@@ -250,6 +289,14 @@ public class UpgradeSystem : MonoBehaviour
                 if (weaponSystem != null && !string.IsNullOrEmpty(upgrade.weaponName))
                 {
                     weaponSystem.UpgradeWeapon(upgrade.weaponName);
+                }
+                break;
+
+            case UpgradeType.Shield:
+                if (player != null)
+                {
+                    player.hasShield = true;
+                    player.ActivateShield();
                 }
                 break;
         }

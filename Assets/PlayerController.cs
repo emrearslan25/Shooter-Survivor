@@ -29,6 +29,15 @@ public class PlayerController : MonoBehaviour
     public GameObject model;
     public ParticleSystem damageEffect;
 
+    [Header("Shield Skill")]
+    public bool hasShield = false;
+    public float shieldRadius = 1.5f;
+    public float shieldDamage = 15f;
+    public float shieldDamageInterval = 0.5f;
+    private GameObject shieldVisual;
+    private LineRenderer shieldLineRenderer;
+    private float lastShieldDamageTime = 0f;
+
     // Components
     private Rigidbody2D rb;
     private WeaponSystem weaponSystem;
@@ -55,6 +64,12 @@ public class PlayerController : MonoBehaviour
         {
             weaponSystem.enabled = false;
         }
+
+        // Initialize shield if needed
+        if (hasShield)
+        {
+            ActivateShield();
+        }
     }
 
     void Update()
@@ -69,6 +84,12 @@ public class PlayerController : MonoBehaviour
         {
             HandleMovement();
             HandleAutoAim();
+        }
+
+        // Handle shield damage
+        if (hasShield)
+        {
+            UpdateShield();
         }
     }
 
@@ -332,4 +353,98 @@ public class PlayerController : MonoBehaviour
     public float GetHealthPercentage() => currentHealth / maxHealth;
     public Vector2 GetMoveDirection() => moveDirection;
     public bool IsSimpleShootingEnabled() => useSimpleShooting;
+
+    // Shield system methods
+    public void ActivateShield()
+    {
+        if (hasShield && shieldVisual == null)
+        {
+            CreateShieldVisual();
+        }
+    }
+
+    void CreateShieldVisual()
+    {
+        // Create shield visual as a child of player
+        shieldVisual = new GameObject("Shield");
+        shieldVisual.transform.SetParent(transform, false);
+        shieldVisual.transform.localPosition = Vector3.zero;
+
+        // Create circular LineRenderer for yellow shield
+        shieldLineRenderer = shieldVisual.AddComponent<LineRenderer>();
+        var material = new Material(Shader.Find("Sprites/Default"));
+        material.color = Color.yellow;
+        shieldLineRenderer.material = material;
+        shieldLineRenderer.startWidth = 0.08f;
+        shieldLineRenderer.endWidth = 0.08f;
+        shieldLineRenderer.positionCount = 65; // 64 segments + 1 to close circle
+        shieldLineRenderer.useWorldSpace = false;
+        shieldLineRenderer.sortingOrder = 5;
+
+        // Create circle points
+        for (int i = 0; i <= 64; i++)
+        {
+            float angle = i * 2f * Mathf.PI / 64f;
+            Vector3 pos = new Vector3(
+                Mathf.Cos(angle) * shieldRadius,
+                Mathf.Sin(angle) * shieldRadius,
+                0f
+            );
+            shieldLineRenderer.SetPosition(i, pos);
+        }
+
+        // Add trigger collider for damage detection
+        var collider = shieldVisual.AddComponent<CircleCollider2D>();
+        collider.radius = shieldRadius;
+        collider.isTrigger = true;
+
+        // Add script to handle shield damage
+        var shieldScript = shieldVisual.AddComponent<PlayerShield>();
+        shieldScript.Initialize(this);
+    }
+
+    void UpdateShield()
+    {
+        if (shieldVisual == null && hasShield)
+        {
+            CreateShieldVisual();
+        }
+        else if (shieldVisual != null && !hasShield)
+        {
+            DestroyImmediate(shieldVisual);
+            shieldVisual = null;
+        }
+
+        // Update shield visual position (it's already a child, so it follows automatically)
+    }
+
+    public void DamageEnemiesInShield()
+    {
+        if (!hasShield || Time.time - lastShieldDamageTime < shieldDamageInterval)
+            return;
+
+        // Find all enemies within shield radius
+        Collider2D[] enemies = Physics2D.OverlapCircleAll(transform.position, shieldRadius);
+        
+        foreach (var col in enemies)
+        {
+            Enemy enemy = col.GetComponent<Enemy>();
+            if (enemy != null && !enemy.IsDead())
+            {
+                enemy.TakeDamage(shieldDamage);
+            }
+        }
+
+        lastShieldDamageTime = Time.time;
+    }
+
+    public void DeactivateShield()
+    {
+        hasShield = false;
+        if (shieldVisual != null)
+        {
+            DestroyImmediate(shieldVisual);
+            shieldVisual = null;
+        }
+    }
 }

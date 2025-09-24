@@ -1,125 +1,207 @@
 using UnityEngine;
 
-// World-space infinite scrolling background (no Canvas)
-// Creates a quad behind gameplay and scrolls texture based on camera position.
+// Inspector-assigned sprite infinite tiling background system
+// Creates tiles around player that move as player moves for seamless infinite background
 public class InfiniteBackground : MonoBehaviour
 {
-    [Header("Appearance")]
-    public Color baseColor = new Color(0.02f, 0.03f, 0.05f, 1f); // near black
-    public Color lineColor = new Color(0f, 1f, 1f, 0.12f);       // cyan neon (subtle)
-    public int textureSize = 256;                                // generated texture size (square)
-    public int gridStep = 32;                                    // pixels between grid lines
-    public int lineWidth = 2;                                    // grid line thickness in pixels
-    public float parallax = 0.05f;                               // scroll speed relative to camera
+    [Header("Background Settings")]
+    public Sprite backgroundSprite;
+    public float tileSize = 10f; // Size of each background tile
+    public int gridSize = 3; // 3x3 grid around player
+    public string sortingLayerName = "Background";
+    public int sortingOrder = -10;
 
-    [Header("Placement")]
-    public float depth = 100f;      // z position relative to camera (place far behind gameplay)
-    public float coverage = 2.2f;   // how much larger than view to render to avoid edges
+    [Header("References")]
+    public Transform player;
+    public Camera mainCamera;
 
-    Camera cam;
-    Transform quad;
-    Material mat;
+    private GameObject[,] backgroundTiles;
+    private Vector2 lastPlayerGridPos;
+    private Vector2 spriteSize;
 
-    void Awake()
+    void Start()
     {
-        cam = Camera.main;
-        if (cam == null)
+        // Auto-find references if not assigned
+        if (player == null)
         {
-            cam = GetComponent<Camera>();
+            var playerController = FindObjectOfType<PlayerController>();
+            if (playerController != null)
+                player = playerController.transform;
         }
-        if (cam == null) return;
 
-        EnsureQuad();
-    }
+        if (mainCamera == null)
+            mainCamera = Camera.main;
 
-    void LateUpdate()
-    {
-        if (cam == null || quad == null) return;
-
-        // Match camera position and scale to viewport size
-    var camPos = cam.transform.position;
-    // Place quad along camera forward so it always sits behind gameplay in view space
-    Vector3 bgPos = camPos + cam.transform.forward * depth;
-    quad.position = new Vector3(bgPos.x, bgPos.y, bgPos.z);
-    // Face the camera
-    quad.rotation = Quaternion.LookRotation(cam.transform.forward, cam.transform.up);
-
-        // Orthographic camera viewport in world units
-        float h = cam.orthographicSize * 2f;
-        float w = h * cam.aspect;
-
-        quad.localScale = new Vector3(w * coverage, h * coverage, 1f);
-
-        // Scroll by camera position for an infinite feel
-        if (mat != null)
+        if (backgroundSprite == null)
         {
-            Vector2 off = new Vector2(camPos.x, camPos.y) * parallax;
-            mat.mainTextureOffset = off;
-            // Tile more on bigger screens for finer grid
-            float tile = Mathf.Max(1f, (w + h) * 0.25f);
-            mat.mainTextureScale = new Vector2(tile, tile);
+            Debug.LogWarning("InfiniteBackground: No background sprite assigned!");
+            return;
+        }
+
+        // Calculate sprite size based on tileSize
+        spriteSize = new Vector2(tileSize, tileSize);
+
+        // Initialize the tile grid
+        InitializeTileGrid();
+
+        // Set initial position
+        if (player != null)
+        {
+            lastPlayerGridPos = GetGridPosition(player.position);
+            UpdateTilePositions();
         }
     }
 
-    void EnsureQuad()
+    void Update()
     {
-        // Create quad child
-        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        go.name = "InfiniteBG";
-        go.transform.SetParent(transform, false);
-        quad = go.transform;
+        if (player == null || backgroundSprite == null) return;
 
-        // Disable collider on the generated quad
-        var col = go.GetComponent<Collider>();
-        if (col != null) col.enabled = false;
+        Vector2 currentPlayerGridPos = GetGridPosition(player.position);
 
-        // Material with repeatable texture
-    mat = new Material(Shader.Find("Unlit/Texture"));
-        mat.mainTexture = GenerateGridTexture();
-        mat.mainTexture.wrapMode = TextureWrapMode.Repeat;
-        mat.color = Color.white;
-    // Render as background and avoid depth occlusion
-    mat.renderQueue = 1000; // Background
-    if (mat.HasProperty("_ZWrite")) mat.SetInt("_ZWrite", 0);
-
-        var mr = go.GetComponent<MeshRenderer>();
-    mr.sharedMaterial = mat;
-    // Ensure it renders far behind any sprites/lines
-    mr.sortingOrder = -10000;
+        // Check if player moved to a different grid cell
+        if (currentPlayerGridPos != lastPlayerGridPos)
+        {
+            UpdateTilePositions();
+            lastPlayerGridPos = currentPlayerGridPos;
+        }
     }
 
-    Texture2D GenerateGridTexture()
+    void InitializeTileGrid()
     {
-        int size = Mathf.Clamp(textureSize, 64, 1024);
-        int step = Mathf.Clamp(gridStep, 8, size / 2);
-        int lw = Mathf.Clamp(lineWidth, 1, step / 2);
+        backgroundTiles = new GameObject[gridSize, gridSize];
 
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        var pixels = new Color32[size * size];
-
-        // Draw base
-        Color32 baseC = baseColor;
-        for (int i = 0; i < pixels.Length; i++) pixels[i] = baseC;
-
-        // Neon grid lines
-        Color32 lineC = lineColor;
-        for (int y = 0; y < size; y++)
+        for (int x = 0; x < gridSize; x++)
         {
-            bool isHLine = (y % step) < lw;
-            for (int x = 0; x < size; x++)
+            for (int y = 0; y < gridSize; y++)
             {
-                bool isVLine = (x % step) < lw;
-                if (isHLine || isVLine)
+                GameObject tile = CreateBackgroundTile();
+                tile.name = $"BackgroundTile_{x}_{y}";
+                backgroundTiles[x, y] = tile;
+            }
+        }
+    }
+
+    GameObject CreateBackgroundTile()
+    {
+        GameObject tile = new GameObject("BackgroundTile");
+        
+        SpriteRenderer sr = tile.AddComponent<SpriteRenderer>();
+        sr.sprite = backgroundSprite;
+        sr.sortingLayerName = sortingLayerName;
+        sr.sortingOrder = sortingOrder;
+
+        // Scale sprite to match tileSize
+        if (backgroundSprite != null)
+        {
+            Vector2 spriteOriginalSize = backgroundSprite.bounds.size;
+            Vector2 scale = new Vector2(
+                tileSize / spriteOriginalSize.x,
+                tileSize / spriteOriginalSize.y
+            );
+            tile.transform.localScale = scale;
+        }
+
+        return tile;
+    }
+
+    void UpdateTilePositions()
+    {
+        if (player == null) return;
+
+        Vector2 playerGridPos = GetGridPosition(player.position);
+        int halfGrid = gridSize / 2;
+
+        for (int x = 0; x < gridSize; x++)
+        {
+            for (int y = 0; y < gridSize; y++)
+            {
+                if (backgroundTiles[x, y] != null)
                 {
-                    int idx = y * size + x;
-                    pixels[idx] = lineC;
+                    // Calculate world position for this tile
+                    Vector2 tileGridPos = new Vector2(
+                        playerGridPos.x - halfGrid + x,
+                        playerGridPos.y - halfGrid + y
+                    );
+
+                    Vector3 worldPos = new Vector3(
+                        tileGridPos.x * tileSize,
+                        tileGridPos.y * tileSize,
+                        0f
+                    );
+
+                    backgroundTiles[x, y].transform.position = worldPos;
                 }
             }
         }
+    }
 
-        tex.SetPixels32(pixels);
-        tex.Apply(false, false);
-        return tex;
+    Vector2 GetGridPosition(Vector3 worldPos)
+    {
+        return new Vector2(
+            Mathf.FloorToInt(worldPos.x / tileSize),
+            Mathf.FloorToInt(worldPos.y / tileSize)
+        );
+    }
+
+    // Method to change background sprite at runtime
+    public void SetBackgroundSprite(Sprite newSprite)
+    {
+        backgroundSprite = newSprite;
+        
+        if (backgroundTiles != null)
+        {
+            for (int x = 0; x < gridSize; x++)
+            {
+                for (int y = 0; y < gridSize; y++)
+                {
+                    if (backgroundTiles[x, y] != null)
+                    {
+                        SpriteRenderer sr = backgroundTiles[x, y].GetComponent<SpriteRenderer>();
+                        if (sr != null)
+                        {
+                            sr.sprite = newSprite;
+                            
+                            // Update scale for new sprite
+                            if (newSprite != null)
+                            {
+                                Vector2 spriteOriginalSize = newSprite.bounds.size;
+                                Vector2 scale = new Vector2(
+                                    tileSize / spriteOriginalSize.x,
+                                    tileSize / spriteOriginalSize.y
+                                );
+                                backgroundTiles[x, y].transform.localScale = scale;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void OnValidate()
+    {
+        // Update tile size when changed in inspector
+        if (Application.isPlaying && backgroundTiles != null)
+        {
+            spriteSize = new Vector2(tileSize, tileSize);
+            UpdateTilePositions();
+            
+            // Update scale of existing tiles
+            for (int x = 0; x < gridSize; x++)
+            {
+                for (int y = 0; y < gridSize; y++)
+                {
+                    if (backgroundTiles[x, y] != null && backgroundSprite != null)
+                    {
+                        Vector2 spriteOriginalSize = backgroundSprite.bounds.size;
+                        Vector2 scale = new Vector2(
+                            tileSize / spriteOriginalSize.x,
+                            tileSize / spriteOriginalSize.y
+                        );
+                        backgroundTiles[x, y].transform.localScale = scale;
+                    }
+                }
+            }
+        }
     }
 }
