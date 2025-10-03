@@ -10,7 +10,7 @@ public class PlayerController : MonoBehaviour
     public bool useSimpleShooting = true; // if true, ignore WeaponSystem and shoot basic projectile on LMB
     public Transform firePoint; // optional; if null, use player position
     public GameObject projectilePrefab; // optional; if null, create runtime projectile
-    public float simpleFireRate = 6f;
+    public float simpleFireRate = 2f; // 2 shots per second initially
     public float simpleProjectileSpeed = 16f;
     public float simpleDamage = 10f;
     private float _lastSimpleShotTime = 0f;
@@ -32,11 +32,18 @@ public class PlayerController : MonoBehaviour
     [Header("Shield Skill")]
     public bool hasShield = false;
     public float shieldRadius = 1.5f;
-    public float shieldDamage = 15f;
-    public float shieldDamageInterval = 0.5f;
+    public float shieldDamage = 8f; // Lower damage per tick
+    public float shieldDamageInterval = 1f; // Once per second
     private GameObject shieldVisual;
     private LineRenderer shieldLineRenderer;
     private float lastShieldDamageTime = 0f;
+
+    [Header("New Skills")]
+    public bool hasDualShot = false;
+    public bool hasExpandedShield = false;
+    public bool hasOrbitingSphere = false;
+    private GameObject orbitingSphere;
+    private float sphereOrbitSpeed = 120f; // degrees per second
 
     // Components
     private Rigidbody2D rb;
@@ -146,6 +153,27 @@ public class PlayerController : MonoBehaviour
         Vector3 origin = firePoint != null ? firePoint.position : transform.position;
         Vector2 dir = ((Vector2)targetWorld - (Vector2)origin).normalized;
 
+        if (hasDualShot)
+        {
+            // Fire two projectiles with slight angle offset
+            float angleOffset = 15f; // degrees
+            Vector2 dir1 = Quaternion.Euler(0, 0, angleOffset) * dir;
+            Vector2 dir2 = Quaternion.Euler(0, 0, -angleOffset) * dir;
+            
+            FireSingleProjectile(origin, dir1);
+            FireSingleProjectile(origin, dir2);
+        }
+        else
+        {
+            // Single projectile
+            FireSingleProjectile(origin, dir);
+        }
+
+        _lastSimpleShotTime = Time.time;
+    }
+
+    void FireSingleProjectile(Vector3 origin, Vector2 direction)
+    {
         GameObject proj = projectilePrefab != null ? Instantiate(projectilePrefab, origin, Quaternion.identity)
                                                    : CreateRuntimeProjectile(origin);
         if (proj == null) return;
@@ -153,15 +181,13 @@ public class PlayerController : MonoBehaviour
         var comp = proj.GetComponent<Projectile>();
         if (comp != null)
         {
-            comp.Initialize(dir, simpleProjectileSpeed, simpleDamage);
+            comp.Initialize(direction, simpleProjectileSpeed, simpleDamage);
         }
         else
         {
             var rb2d = proj.GetComponent<Rigidbody2D>();
-            if (rb2d != null) rb2d.velocity = dir * simpleProjectileSpeed;
+            if (rb2d != null) rb2d.velocity = direction * simpleProjectileSpeed;
         }
-
-        _lastSimpleShotTime = Time.time;
     }
 
     GameObject CreateRuntimeProjectile(Vector3 spawnPos)
@@ -446,5 +472,64 @@ public class PlayerController : MonoBehaviour
             DestroyImmediate(shieldVisual);
             shieldVisual = null;
         }
+    }
+
+    public void ExpandShield()
+    {
+        if (!hasShield || shieldLineRenderer == null) return;
+        
+        // Increase shield radius
+        float newRadius = shieldRadius * 1.5f;
+        shieldRadius = newRadius;
+        
+        // Update visual
+        for (int i = 0; i < shieldLineRenderer.positionCount; i++)
+        {
+            float angle = (i / (float)shieldLineRenderer.positionCount) * Mathf.PI * 2f;
+            shieldLineRenderer.SetPosition(i, new Vector3(Mathf.Cos(angle) * newRadius, Mathf.Sin(angle) * newRadius, 0f));
+        }
+    }
+
+    public void CreateOrbitingSphere()
+    {
+        if (orbitingSphere != null) return; // Already has one
+        
+        orbitingSphere = new GameObject("OrbitingSphere");
+        orbitingSphere.transform.SetParent(transform, false);
+        orbitingSphere.transform.localPosition = new Vector3(2f, 0f, 0f);
+        
+        // Visual - purple sphere
+        var sr = orbitingSphere.AddComponent<SpriteRenderer>();
+        var tex = new Texture2D(16, 16, TextureFormat.RGBA32, false);
+        var cols = new Color32[16 * 16];
+        
+        Vector2 center = new Vector2(8f, 8f);
+        float radius = 6f;
+        Color purpleColor = new Color(0.8f, 0f, 0.8f, 1f);
+        
+        for (int y = 0; y < 16; y++)
+        {
+            for (int x = 0; x < 16; x++)
+            {
+                float dist = Vector2.Distance(new Vector2(x, y), center);
+                cols[y * 16 + x] = dist <= radius ? purpleColor : Color.clear;
+            }
+        }
+        
+        tex.SetPixels32(cols);
+        tex.Apply();
+        
+        var sprite = Sprite.Create(tex, new Rect(0, 0, 16, 16), new Vector2(0.5f, 0.5f), 64f);
+        sr.sprite = sprite;
+        sr.sortingOrder = 10;
+        
+        // Collider for damage
+        var col = orbitingSphere.AddComponent<CircleCollider2D>();
+        col.isTrigger = true;
+        col.radius = 0.2f;
+        
+        // Damage component
+        var damage = orbitingSphere.AddComponent<OrbitingSphere>();
+        damage.damage = 15f;
     }
 }

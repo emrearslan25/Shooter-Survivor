@@ -27,7 +27,10 @@ public class UpgradeSystem : MonoBehaviour
         PickupRange,
         NewWeapon,
         WeaponUpgrade,
-        Shield
+        Shield,
+        DualShot,
+        ShieldExpansion,
+        OrbitingSphere
     }
 
     [Header("Upgrade Settings")]
@@ -92,10 +95,23 @@ public class UpgradeSystem : MonoBehaviour
             pool.Add(new UpgradeOption { name = "Hasar +5", description = "Mermi hasarı +5", type = UpgradeType.Damage, value = 5 });
             pool.Add(new UpgradeOption { name = "Atış Hızı +1", description = "Daha hızlı ateş", type = UpgradeType.FireRate, value = 1 });
             pool.Add(new UpgradeOption { name = "Toplama +1", description = "XP çekim menzili +1", type = UpgradeType.PickupRange, value = 1 });
-            // Only add shield if player doesn't have it yet
+            
+            // Special upgrades with proper checks
             if (player != null && !player.hasShield)
             {
                 pool.Add(new UpgradeOption { name = "Koruyucu Kalkan", description = "Etrafında sarı kalkan oluştur", type = UpgradeType.Shield, value = 1 });
+            }
+            if (player != null && !player.hasDualShot)
+            {
+                pool.Add(new UpgradeOption { name = "Çift Atış", description = "Aynı anda 2 mermi atar", type = UpgradeType.DualShot, value = 1 });
+            }
+            if (player != null && player.hasShield && !player.hasExpandedShield)
+            {
+                pool.Add(new UpgradeOption { name = "Kalkan Genişletme", description = "Kalkan alanını büyütür", type = UpgradeType.ShieldExpansion, value = 1 });
+            }
+            if (player != null && !player.hasOrbitingSphere)
+            {
+                pool.Add(new UpgradeOption { name = "Döner Küre", description = "Etrafta dönen mor hasar küresi", type = UpgradeType.OrbitingSphere, value = 1 });
             }
         }
 
@@ -145,6 +161,10 @@ public class UpgradeSystem : MonoBehaviour
                     {
                         upgradeNames[i].color = Color.yellow;
                     }
+                    else if (option.type == UpgradeType.OrbitingSphere)
+                    {
+                        upgradeNames[i].color = new Color(0.8f, 0f, 0.8f); // Purple
+                    }
                     else
                     {
                         upgradeNames[i].color = Color.black;
@@ -159,6 +179,10 @@ public class UpgradeSystem : MonoBehaviour
                     {
                         upgradeDescriptions[i].color = Color.yellow;
                     }
+                    else if (option.type == UpgradeType.OrbitingSphere)
+                    {
+                        upgradeDescriptions[i].color = new Color(0.8f, 0f, 0.8f); // Purple
+                    }
                     else
                     {
                         upgradeDescriptions[i].color = Color.black;
@@ -171,10 +195,14 @@ public class UpgradeSystem : MonoBehaviour
                     {
                         tmp.text = option.name + "\n<size=80%>" + option.description + "</size>";
                         
-                        // Make shield upgrade text yellow
+                        // Make shield upgrade text yellow, orbiting sphere purple
                         if (option.type == UpgradeType.Shield)
                         {
                             tmp.color = Color.yellow;
+                        }
+                        else if (option.type == UpgradeType.OrbitingSphere)
+                        {
+                            tmp.color = new Color(0.8f, 0f, 0.8f); // Purple
                         }
                         else
                         {
@@ -297,6 +325,29 @@ public class UpgradeSystem : MonoBehaviour
                 {
                     player.hasShield = true;
                     player.ActivateShield();
+                }
+                break;
+
+            case UpgradeType.DualShot:
+                if (player != null)
+                {
+                    player.hasDualShot = true;
+                }
+                break;
+
+            case UpgradeType.ShieldExpansion:
+                if (player != null && player.hasShield)
+                {
+                    player.hasExpandedShield = true;
+                    player.ExpandShield();
+                }
+                break;
+
+            case UpgradeType.OrbitingSphere:
+                if (player != null)
+                {
+                    player.hasOrbitingSphere = true;
+                    player.CreateOrbitingSphere();
                 }
                 break;
         }

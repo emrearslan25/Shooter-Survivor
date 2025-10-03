@@ -9,6 +9,12 @@ public class GameManager : MonoBehaviour
     public int maxEnemies = 50;
     public float enemySpawnRate = 2f;
 
+    [Header("Score System")]
+    private static string currentPlayerName = "Oyuncu";
+    private float gameStartTime;
+    private int currentScore = 0;
+    private bool gameEnded = false;
+
     [Header("Player Settings")]
     public GameObject playerPrefab;
     public Vector2 playerStartPosition = Vector2.zero;
@@ -48,6 +54,8 @@ public class GameManager : MonoBehaviour
 
     void InitializeGame()
     {
+        gameStartTime = Time.time;
+        
         // Create player (prefab or runtime)
         if (playerPrefab != null)
         {
@@ -107,6 +115,7 @@ public class GameManager : MonoBehaviour
         // Random position around the player (2D)
         Vector2 spawnPos = GetRandomSpawnPosition();
 
+        // Prefab kullanımı öncelikli
         if (enemyPrefabs != null && enemyPrefabs.Length > 0 && enemyPrefabs[0] != null)
         {
             int randomIndex = Random.Range(0, enemyPrefabs.Length);
@@ -121,6 +130,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
+            // Runtime creation (şu anki sistem)
             Enemy enemy = CreateRuntimeEnemy(spawnPos);
             if (enemy != null)
             {
@@ -189,9 +199,23 @@ public class GameManager : MonoBehaviour
 
     public void GameOver()
     {
+        if (gameEnded) return;
+        gameEnded = true;
+        
         isGameRunning = false;
-        Debug.Log("Game Over!");
+        
+        // Calculate final score and survival time
+        float survivalTime = Time.time - gameStartTime;
+        CalculateFinalScore(survivalTime);
+        
+        // Save high score
+        int playerLevel = experienceSystem != null ? experienceSystem.GetCurrentLevel() : 1;
+        ScoreManager.SaveScore(currentPlayerName, currentScore, survivalTime, playerLevel);
+        
+        Debug.Log($"Game Over! Score: {currentScore}, Time: {survivalTime:F1}s");
+        
         // Show game over screen
+        ShowGameOverScreen();
     }
 
     // ---------- Runtime Creation Helpers ----------
@@ -199,20 +223,26 @@ public class GameManager : MonoBehaviour
     {
         GameObject go = new GameObject("Player");
         go.transform.position = position;
+        
+        // PLAYER BOYUT - STANDART (1.0 scale)
+        go.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
+        
         var rb2d = go.AddComponent<Rigidbody2D>();
         rb2d.gravityScale = 0f;
         rb2d.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        
+        // Player collider - visual ile tam eşleşsin
         var col = go.AddComponent<CircleCollider2D>();
-        col.radius = 0.35f;
+        col.radius = 0.5f; // 1.0 scale için yarısı
 
         var pc = go.AddComponent<PlayerController>();
         pc.manualControl = true;
         pc.moveSpeed = 6f;
         pc.useSimpleShooting = true;
 
-        // Visual
-    var visual = CreateCircleVisual("PlayerVisual", go.transform, new Color(0.1f, 0.9f, 0.9f, 1f), 0.4f, 28, 0.06f);
-    var vr = visual.GetComponent<Renderer>(); if (vr != null) vr.sortingOrder = 50;
+        // Visual - 1.0 scale boyutunda
+        var visual = CreateCircleVisual("PlayerVisual", go.transform, new Color(0.1f, 0.9f, 0.9f, 1f), 0.5f, 28, 0.06f);
+        var vr = visual.GetComponent<Renderer>(); if (vr != null) vr.sortingOrder = 50;
         pc.model = visual;
 
         // FirePoint
@@ -226,24 +256,34 @@ public class GameManager : MonoBehaviour
 
     Enemy CreateRuntimeEnemy(Vector2 position)
     {
-        GameObject go = new GameObject("Enemy");
+        // ENEMY TİPLERİNE GÖRE AĞIRLIKLI SPAWN
+        EnemyType[] types = { EnemyType.Circle, EnemyType.Triangle, EnemyType.Square };
+        EnemyType selectedType = types[Random.Range(0, types.Length)];
+        
+        // Yeni spawn oranları: %45 Circle, %45 Triangle, %10 Square
+        // (Mavi düşman spawn oranı düşürüldü)
+        float rand = Random.Range(0f, 1f);
+        if (rand < 0.45f) selectedType = EnemyType.Circle;        // Kırmızı çember
+        else if (rand < 0.9f) selectedType = EnemyType.Triangle; // Sarı üçgen  
+        else selectedType = EnemyType.Square;                    // Büyük mavi kare
+
+        GameObject go = new GameObject($"Enemy_{selectedType}");
         go.transform.position = position;
+        
         var rb2d = go.AddComponent<Rigidbody2D>();
         rb2d.gravityScale = 0f;
         rb2d.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        
+        // Başlangıç collider - enemy type setup'ında düzeltilecek
         var col = go.AddComponent<CircleCollider2D>();
-        col.radius = 0.32f;
+        col.radius = 0.5f; // Geçici, her tip kendi ayarlayacak
 
         var enemy = go.AddComponent<Enemy>();
-        enemy.moveSpeed = 2.2f;
-        enemy.maxHealth = 12f;
-        enemy.attackDamage = 6f;
+        enemy.enemyType = selectedType;
 
-        // Visual
-    var visual = CreateCircleVisual("EnemyVisual", go.transform, new Color(1f, 0.3f, 0.3f, 1f), 0.38f, 24, 0.06f);
-    var vr = visual.GetComponent<Renderer>(); if (vr != null) vr.sortingOrder = 40;
-        enemy.model = visual;
-
+        // Enemy kendi boyutunu ve collider'ını ayarlayacak
+        enemy.Initialize(player.transform);
+        
         return enemy;
     }
 
@@ -266,5 +306,53 @@ public class GameManager : MonoBehaviour
             lr.SetPosition(i, new Vector3(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius, 0f));
         }
         return v;
+    }
+
+    // Score and player name management
+    public static void SetCurrentPlayerName(string name)
+    {
+        currentPlayerName = name;
+    }
+
+    public static string GetCurrentPlayerName()
+    {
+        return currentPlayerName;
+    }
+
+    public int GetCurrentScore()
+    {
+        return currentScore;
+    }
+
+    void CalculateFinalScore(float survivalTime)
+    {
+        // Base score from survival time
+        int timeScore = Mathf.FloorToInt(survivalTime * 10f);
+        
+        // Bonus from level
+        int levelBonus = experienceSystem != null ? experienceSystem.GetCurrentLevel() * 100 : 0;
+        
+        // Bonus from enemies killed (approximate)
+        int enemyBonus = Mathf.FloorToInt(survivalTime * enemySpawnRate * 50f);
+        
+        currentScore = timeScore + levelBonus + enemyBonus;
+    }
+
+    void ShowGameOverScreen()
+    {
+        // Try to show game over panel via UIManager
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.ShowGameOver();
+        }
+        
+        // Alternative: Load main menu after delay
+        Invoke("ReturnToMainMenu", 3f);
+    }
+
+    void ReturnToMainMenu()
+    {
+        // Load main menu scene
+        UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
     }
 }

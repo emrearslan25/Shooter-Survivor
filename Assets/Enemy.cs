@@ -2,15 +2,29 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+public enum EnemyType
+{
+    Circle,     // Normal düşman
+    Triangle,   // Ateş eden düşman  
+    Square      // Büyük yavaş düşman
+}
+
 public class Enemy : MonoBehaviour
 {
     [Header("Enemy Settings")]
+    public EnemyType enemyType = EnemyType.Circle;
     public float moveSpeed = 2f;
     public float maxHealth = 10f;
     public float attackDamage = 5f;
-    public float attackRange = 1.5f;
+    public float attackRange = 0.2f;
     public float attackCooldown = 1f;
     public int experienceValue = 10;
+
+    [Header("Triangle Enemy (Shooter)")]
+    public float shootRange = 5f;
+    public float shootCooldown = 2f;
+    public float projectileSpeed = 8f;
+    public float projectileDamage = 3f;
 
     [Header("Visual")]
     public GameObject model;
@@ -21,6 +35,7 @@ public class Enemy : MonoBehaviour
     private Transform target;
     private bool isAlive = true;
     private float lastAttackTime = 0f;
+    private float lastShootTime = 0f;
 
     // Components
     private Rigidbody2D rb;
@@ -29,11 +44,98 @@ public class Enemy : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         currentHealth = maxHealth;
+        
+        SetupEnemyByType();
+    }
+
+    void SetupEnemyByType()
+    {
+        switch (enemyType)
+        {
+            case EnemyType.Circle:
+                SetupCircleEnemy();
+                break;
+            case EnemyType.Triangle:
+                SetupTriangleEnemy();
+                break;
+            case EnemyType.Square:
+                SetupSquareEnemy();
+                break;
+        }
+    }
+
+    void SetupCircleEnemy()
+    {
+        // KIRMIZI DAIRE DÜŞMAN - PLAYER İLE AYNI BOYUT (1.0 scale)
+        CreateCircleVisual(Color.red, 1.0f);
+        
+        // Collider boyutu visual ile tam eşleşsin
+        var collider = GetComponent<CircleCollider2D>();
+        if (collider != null)
+        {
+            collider.radius = 0.5f; // 1.0 scale'in yarısı
+        }
+        
+        // Transform scale ayarla
+        transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
+    }
+
+    void SetupTriangleEnemy()
+    {
+        // SARI ÜÇGEN DÜŞMAN - ORTA BOYUT (1.0 scale) 
+        maxHealth = 8f;
+        currentHealth = maxHealth;
+        moveSpeed = 2.5f;
+        attackDamage = 3f;
+        experienceValue = 15;
+        
+        CreateTriangleVisual(Color.yellow, 1.0f);
+        
+        // Collider boyutu visual ile tam eşleşsin
+        var collider = GetComponent<CircleCollider2D>();
+        if (collider != null)
+        {
+            collider.radius = 0.5f; // 1.0 scale'in yarısı
+        }
+        
+        // Transform scale ayarla
+        transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
+    }
+
+    void SetupSquareEnemy()
+    {
+        // MAVİ KARE DÜŞMAN - ORTA BÜYÜKLÜK (1.5 scale)
+        maxHealth = 25f;
+        currentHealth = maxHealth;
+        moveSpeed = 1f;
+        attackDamage = 12f;
+        attackRange = 0.05f;
+        experienceValue = 30;
+        
+        CreateSquareVisual(Color.blue, 1.5f);
+        
+        // Collider boyutu visual ile tam eşleşsin
+        var collider = GetComponent<CircleCollider2D>();
+        if (collider != null)
+        {
+            collider.radius = 0.75f; // 1.5 scale'in yarısı
+        }
+        
+        // Transform scale ayarla
+        transform.localScale = new Vector3(1.5f, 1.5f, 1.5f);
     }
 
     void Update()
     {
         if (!isAlive || target == null) return;
+
+        float distanceToTarget = Vector2.Distance(transform.position, target.position);
+
+        // Triangle düşman ateş etmeyi dener
+        if (enemyType == EnemyType.Triangle && distanceToTarget <= shootRange)
+        {
+            TryShoot();
+        }
 
         MoveTowardsTarget();
         TryAttack();
@@ -63,17 +165,63 @@ public class Enemy : MonoBehaviour
     {
         if (Time.time - lastAttackTime < attackCooldown) return;
 
-    float distance = Vector2.Distance(transform.position, target.position);
-    // Account for collider radii so enemies can attack when touching the player's collider
-    float playerRadius = GetColliderRadius2D(target);
-    float myRadius = GetColliderRadius2D(transform);
-    float effectiveDistance = Mathf.Max(0f, distance - (playerRadius + myRadius));
+        float distance = Vector2.Distance(transform.position, target.position);
+        // Account for collider radii so enemies must be visually touching to attack
+        float playerRadius = GetColliderRadius2D(target);
+        float myRadius = GetColliderRadius2D(transform);
+        float effectiveDistance = Mathf.Max(0f, distance - (playerRadius + myRadius));
 
-    if (effectiveDistance <= attackRange)
+        // Enemy must be visually touching the player to deal damage
+        if (effectiveDistance <= 0.01f) // Very small threshold for contact
         {
             Attack();
             lastAttackTime = Time.time;
         }
+    }
+
+    void TryShoot()
+    {
+        if (Time.time - lastShootTime < shootCooldown) return;
+        if (enemyType != EnemyType.Triangle) return;
+
+        Vector2 directionToPlayer = ((Vector2)target.position - (Vector2)transform.position).normalized;
+        CreateEnemyProjectile(directionToPlayer);
+        lastShootTime = Time.time;
+    }
+
+    void CreateEnemyProjectile(Vector2 direction)
+    {
+        GameObject proj = new GameObject("EnemyProjectile");
+        proj.transform.position = transform.position;
+
+        // Visual
+        var sr = proj.AddComponent<SpriteRenderer>();
+        var tex = new Texture2D(6, 6, TextureFormat.RGBA32, false);
+        var cols = new Color32[6 * 6];
+        for (int i = 0; i < cols.Length; i++) cols[i] = new Color32(255, 255, 0, 255); // Yellow
+        tex.SetPixels32(cols);
+        tex.Apply();
+        var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 64f);
+        sr.sprite = sprite;
+        sr.sortingOrder = 5;
+
+        // Collider - make it larger for better collision detection
+        var col = proj.AddComponent<CircleCollider2D>();
+        col.isTrigger = true;
+        col.radius = 0.15f; // Increased from 0.08f
+
+        // Movement
+        var rb2d = proj.AddComponent<Rigidbody2D>();
+        rb2d.gravityScale = 0f;
+        rb2d.collisionDetectionMode = CollisionDetectionMode2D.Continuous; // Better collision detection
+        rb2d.velocity = direction * projectileSpeed;
+
+        // Damage component
+        var damage = proj.AddComponent<EnemyProjectile>();
+        damage.damage = projectileDamage;
+
+        // Destroy after 3 seconds
+        Destroy(proj, 3f);
     }
 
     void Attack()
@@ -95,11 +243,7 @@ public class Enemy : MonoBehaviour
         currentHealth -= damage;
 
         // Damage effect
-        if (model != null)
-        {
-            // Flash red or play hit animation
-            StartCoroutine(DamageFlash());
-        }
+        StartCoroutine(DamageFlash());
 
         if (currentHealth <= 0)
         {
@@ -109,22 +253,16 @@ public class Enemy : MonoBehaviour
 
     IEnumerator DamageFlash()
     {
-        if (model != null)
+        // LineRenderer visual flash effect
+        var visual = transform.GetComponentInChildren<LineRenderer>();
+        if (visual != null)
         {
-            SpriteRenderer[] renderers = model.GetComponentsInChildren<SpriteRenderer>();
-            Color originalColor = renderers[0].color;
-
-            foreach (SpriteRenderer renderer in renderers)
-            {
-                renderer.color = Color.red;
-            }
-
+            Color originalColor = visual.startColor;
+            visual.startColor = Color.white;
+            visual.endColor = Color.white;
             yield return new WaitForSeconds(0.1f);
-
-            foreach (SpriteRenderer renderer in renderers)
-            {
-                renderer.color = originalColor;
-            }
+            visual.startColor = originalColor;
+            visual.endColor = originalColor;
         }
     }
 
@@ -145,11 +283,8 @@ public class Enemy : MonoBehaviour
         if (rb != null)
             rb.simulated = false;
 
-        if (model != null)
-            model.SetActive(false);
-
         // Destroy after delay
-        Destroy(gameObject, 2f);
+        Destroy(gameObject, 0.5f);
     }
 
     void SpawnExperienceOrb()
@@ -184,8 +319,88 @@ public class Enemy : MonoBehaviour
         light.type = LightType.Point; light.color = new Color(0.2f, 1f, 0.6f, 1f); light.range = 2.5f; light.intensity = 1.4f;
 
         var exp = orb.AddComponent<ExperienceOrb>();
-        exp.orbLight = light;
         exp.SetExperienceValue(experienceValue);
+    }
+
+    void CreateCircleVisual(Color color, float size)
+    {
+        // İçi boş çember - Player gibi LineRenderer kullan
+        GameObject visual = new GameObject("CircleVisual");
+        visual.transform.SetParent(transform, false);
+        
+        var lr = visual.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.positionCount = 32; // Smooth circle
+        lr.widthMultiplier = 0.08f; // Line thickness
+        lr.startColor = color;
+        lr.endColor = color;
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        material.renderQueue = 3000;
+        lr.material = material;
+        lr.sortingOrder = 40;
+        
+        // Circle points
+        float radius = size * 0.5f;
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float angle = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
+    }
+
+    void CreateTriangleVisual(Color color, float size)
+    {
+        // İçi boş üçgen - LineRenderer ile
+        GameObject visual = new GameObject("TriangleVisual");
+        visual.transform.SetParent(transform, false);
+        
+        var lr = visual.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.positionCount = 3; // Triangle has 3 points
+        lr.widthMultiplier = 0.08f; // Line thickness
+        lr.startColor = color;
+        lr.endColor = color;
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        material.renderQueue = 3000;
+        lr.material = material;
+        lr.sortingOrder = 40;
+        
+        // Triangle points (pointing right)
+        float radius = size * 0.5f;
+        lr.SetPosition(0, new Vector3(radius, 0f, 0f));           // Right point
+        lr.SetPosition(1, new Vector3(-radius * 0.5f, radius * 0.8f, 0f));  // Top left
+        lr.SetPosition(2, new Vector3(-radius * 0.5f, -radius * 0.8f, 0f)); // Bottom left
+    }
+
+    void CreateSquareVisual(Color color, float size)
+    {
+        // İçi boş kare - LineRenderer ile
+        GameObject visual = new GameObject("SquareVisual");
+        visual.transform.SetParent(transform, false);
+        
+        var lr = visual.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.positionCount = 4; // Square has 4 points
+        lr.widthMultiplier = 0.1f; // Slightly thicker for big squares
+        lr.startColor = color;
+        lr.endColor = color;
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        material.renderQueue = 3000;
+        lr.material = material;
+        lr.sortingOrder = 40;
+        
+        // Square points
+        float halfSize = size * 0.5f;
+        lr.SetPosition(0, new Vector3(halfSize, halfSize, 0f));     // Top right
+        lr.SetPosition(1, new Vector3(-halfSize, halfSize, 0f));    // Top left
+        lr.SetPosition(2, new Vector3(-halfSize, -halfSize, 0f));   // Bottom left
+        lr.SetPosition(3, new Vector3(halfSize, -halfSize, 0f));    // Bottom right
     }
 
     public bool IsDead() => !isAlive;
