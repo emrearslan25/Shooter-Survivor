@@ -8,6 +8,11 @@ public class GameManager : MonoBehaviour
     public float gameAreaHeight = 20f;
     public int maxEnemies = 50;
     public float enemySpawnRate = 2f;
+    
+    [Header("Breakable Box Settings")]
+    public int maxBoxes = 3;
+    public float boxSpawnRate = 30f; // Her 30 saniyede bir kutu spawn şansı
+    public float boxSpawnChance = 0.15f; // %15 şans
 
     [Header("Score System")]
     private static string currentPlayerName = "Oyuncu";
@@ -30,11 +35,13 @@ public class GameManager : MonoBehaviour
     // Game State
     private PlayerController player;
     private List<Enemy> enemies = new List<Enemy>();
+    private List<BreakableBox> boxes = new List<BreakableBox>();
     private WeaponSystem weaponSystem;
     private ExperienceSystem experienceSystem;
     private UpgradeSystem upgradeSystem;
 
     private float spawnTimer = 0f;
+    private float boxSpawnTimer = 0f;
     private bool isGameRunning = false;
     private float gameTime = 0f;
 
@@ -49,6 +56,7 @@ public class GameManager : MonoBehaviour
 
         gameTime += Time.deltaTime;
         UpdateSpawning();
+        UpdateBoxSpawning();
         UpdateGameState();
     }
 
@@ -160,12 +168,55 @@ public class GameManager : MonoBehaviour
     if (upgradeSystem == null) upgradeSystem = FindObjectOfType<UpgradeSystem>();
         // Remove dead enemies
         enemies.RemoveAll(e => e == null || e.IsDead());
+        
+        // Remove destroyed boxes
+        boxes.RemoveAll(b => b == null);
 
         // Check for level up
         if (experienceSystem != null && experienceSystem.ShouldLevelUp())
         {
             PauseGameForUpgrade();
         }
+    }
+    
+    void UpdateBoxSpawning()
+    {
+        boxSpawnTimer += Time.deltaTime;
+        
+        if (boxSpawnTimer >= boxSpawnRate && boxes.Count < maxBoxes)
+        {
+            if (Random.Range(0f, 1f) < boxSpawnChance)
+            {
+                SpawnBreakableBox();
+            }
+            boxSpawnTimer = 0f;
+        }
+    }
+    
+    void SpawnBreakableBox()
+    {
+        // Random position away from player
+        Vector2 spawnPos = GetRandomBoxSpawnPosition();
+        
+        GameObject boxObj = new GameObject("BreakableBox");
+        boxObj.transform.position = spawnPos;
+        
+        var box = boxObj.AddComponent<BreakableBox>();
+        boxes.Add(box);
+    }
+    
+    Vector2 GetRandomBoxSpawnPosition()
+    {
+        // Spawn boxes further away from player than enemies
+        float angle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
+        float distance = Random.Range(10f, 15f); // Daha uzak spawn
+        
+        Vector2 offset = new Vector2(
+            Mathf.Cos(angle) * distance,
+            Mathf.Sin(angle) * distance
+        );
+        
+        return (Vector2)player.transform.position + offset;
     }
 
     void PauseGameForUpgrade()
@@ -196,6 +247,26 @@ public class GameManager : MonoBehaviour
     public List<Enemy> GetEnemies() => enemies;
     public float GetGameTime() => gameTime;
     public bool IsGameRunning() => isGameRunning;
+    
+    // Düşman wave bilgisi
+    public string GetCurrentWaveInfo()
+    {
+        float gameTime = Time.time - gameStartTime;
+        if (gameTime < 120f)
+        {
+            int timeLeft = (int)(120f - gameTime);
+            return $"Kırmızı Dalga - {timeLeft}s";
+        }
+        else if (gameTime < 300f)
+        {
+            int timeLeft = (int)(300f - gameTime);
+            return $"Sarı Dalga - {timeLeft}s";
+        }
+        else
+        {
+            return "Tüm Düşmanlar Aktif";
+        }
+    }
 
     public void GameOver()
     {
@@ -256,16 +327,30 @@ public class GameManager : MonoBehaviour
 
     Enemy CreateRuntimeEnemy(Vector2 position)
     {
-        // ENEMY TİPLERİNE GÖRE AĞIRLIKLI SPAWN
-        EnemyType[] types = { EnemyType.Circle, EnemyType.Triangle, EnemyType.Square };
-        EnemyType selectedType = types[Random.Range(0, types.Length)];
+        // ZAMAN BAZLI ENEMY SPAWN SİSTEMİ
+        float gameTime = Time.time - gameStartTime;
+        EnemyType selectedType = EnemyType.Circle; // Varsayılan kırmızı
         
-        // Yeni spawn oranları: %45 Circle, %45 Triangle, %10 Square
-        // (Mavi düşman spawn oranı düşürüldü)
-        float rand = Random.Range(0f, 1f);
-        if (rand < 0.45f) selectedType = EnemyType.Circle;        // Kırmızı çember
-        else if (rand < 0.9f) selectedType = EnemyType.Triangle; // Sarı üçgen  
-        else selectedType = EnemyType.Square;                    // Büyük mavi kare
+        if (gameTime < 120f) // İlk 2 dakika (120 saniye)
+        {
+            // Sadece kırmızı düşmanlar
+            selectedType = EnemyType.Circle;
+        }
+        else if (gameTime < 300f) // 2-5 dakika arası (120-300 saniye)
+        {
+            // Kırmızı ve sarı düşmanlar
+            float rand = Random.Range(0f, 1f);
+            if (rand < 0.6f) selectedType = EnemyType.Circle;    // %60 kırmızı
+            else selectedType = EnemyType.Triangle;              // %40 sarı
+        }
+        else // 5 dakika sonra (300+ saniye)
+        {
+            // Tüm düşman tipleri
+            float rand = Random.Range(0f, 1f);
+            if (rand < 0.45f) selectedType = EnemyType.Circle;        // %45 kırmızı
+            else if (rand < 0.9f) selectedType = EnemyType.Triangle;  // %45 sarı  
+            else selectedType = EnemyType.Square;                     // %10 mavi
+        }
 
         GameObject go = new GameObject($"Enemy_{selectedType}");
         go.transform.position = position;

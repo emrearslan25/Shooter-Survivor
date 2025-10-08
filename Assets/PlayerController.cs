@@ -43,7 +43,37 @@ public class PlayerController : MonoBehaviour
     public bool hasExpandedShield = false;
     public bool hasOrbitingSphere = false;
     private GameObject orbitingSphere;
-    private float sphereOrbitSpeed = 120f; // degrees per second
+    public float sphereOrbitSpeed = 120f; // degrees per second
+    
+    [Header("Advanced Skills")]
+    public float criticalChance = 0f;
+    public float criticalMultiplier = 2f;
+    public bool hasExplosiveShots = false;
+    public float explosionRadius = 1.5f;
+    public float explosionDamageMultiplier = 0.7f;
+    public bool hasFreezingShots = false;
+    public float freezeChance = 1f;
+    public float freezeDuration = 0.5f;
+    public float lifeStealPercent = 0f;
+    public bool hasAreaLifeSteal = false;
+    public bool hasSpeedBoost = false;
+    public float speedBoostTimer = 0f;
+    public float originalSpeed;
+    public float speedBoostMultiplier = 1.5f;
+    public bool hasPoisonAura = false;
+    public float poisonDamage = 15f;
+    public float poisonRadius = 3f;
+    public int ricochetCount = 0;
+    public float ricochetRange = 5f;
+    public bool hasTimeStop = false;
+    public float timeStopTimer = 0f;
+    public float timeStopDuration = 3f;
+    public float timeStopChance = 0f;
+    public bool hasShieldReflection = false;
+    public float orbDamage = 10f;
+    
+    private GameObject poisonAura;
+    private List<GameObject> additionalOrbs = new List<GameObject>();
 
     // Components
     private Rigidbody2D rb;
@@ -61,6 +91,7 @@ public class PlayerController : MonoBehaviour
         weaponSystem = FindObjectOfType<WeaponSystem>();
         experienceSystem = FindObjectOfType<ExperienceSystem>();
 
+        originalSpeed = moveSpeed;
         currentHealth = maxHealth;
 
         // Auto-pickup system
@@ -82,6 +113,10 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         if (!isAlive) return;
+        
+        // Update skill timers
+        UpdateSkillTimers();
+        
         if (manualControl)
         {
             HandleInputMovement();
@@ -97,6 +132,55 @@ public class PlayerController : MonoBehaviour
         if (hasShield)
         {
             UpdateShield();
+        }
+    }
+    
+    void UpdateSkillTimers()
+    {
+        // Speed boost timer
+        if (speedBoostTimer > 0f)
+        {
+            speedBoostTimer -= Time.deltaTime;
+            if (speedBoostTimer <= 0f)
+            {
+                // Revert speed
+                moveSpeed = originalSpeed;
+            }
+        }
+        
+        // Time stop timer
+        if (timeStopTimer > 0f)
+        {
+            timeStopTimer -= Time.deltaTime;
+            Time.timeScale = 0.3f; // Slow time
+            
+            if (timeStopTimer <= 0f)
+            {
+                Time.timeScale = 1f; // Normal time
+            }
+        }
+        
+        // Activate speed boost when health is low
+        if (hasSpeedBoost && currentHealth < maxHealth * 0.3f && speedBoostTimer <= 0f)
+        {
+            ActivateSpeedBoost();
+        }
+    }
+    
+    void ActivateSpeedBoost()
+    {
+        speedBoostTimer = 5f; // 5 seconds boost
+        moveSpeed = originalSpeed * speedBoostMultiplier;
+        
+        // Visual effect - simple version for now
+        Debug.Log("Speed Boost Activated!");
+    }
+    
+    public void ActivateTimeStop()
+    {
+        if (hasTimeStop)
+        {
+            timeStopTimer = 3f; // 3 seconds time stop
         }
     }
 
@@ -181,7 +265,33 @@ public class PlayerController : MonoBehaviour
         var comp = proj.GetComponent<Projectile>();
         if (comp != null)
         {
-            comp.Initialize(direction, simpleProjectileSpeed, simpleDamage);
+            float finalDamage = simpleDamage;
+            
+            // Critical hit check
+            bool isCritical = Random.Range(0f, 1f) < criticalChance;
+            if (isCritical)
+            {
+                finalDamage *= criticalMultiplier; // Use upgraded multiplier
+                // Create simple critical hit effect
+                Debug.Log("CRITICAL HIT!");
+                CreateCriticalHitEffect(firePoint.position);
+            }
+            
+            comp.Initialize(direction, simpleProjectileSpeed, finalDamage);
+            
+            // Add special shot properties
+            if (hasExplosiveShots)
+            {
+                comp.SetExplosive(true);
+            }
+            if (hasFreezingShots)
+            {
+                comp.SetFreezing(true);
+            }
+            if (ricochetCount > 0)
+            {
+                comp.SetRicochet(ricochetCount);
+            }
         }
         else
         {
@@ -373,6 +483,9 @@ public class PlayerController : MonoBehaviour
     public void Heal(float amount)
     {
         currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+        
+        // Visual healing effect
+        Debug.Log($"Healed for {amount:F1} HP");
     }
 
     public bool IsAlive() => isAlive;
@@ -531,5 +644,119 @@ public class PlayerController : MonoBehaviour
         // Damage component
         var damage = orbitingSphere.AddComponent<OrbitingSphere>();
         damage.damage = 15f;
+    }
+    
+    public void CreatePoisonAura()
+    {
+        if (poisonAura != null) return;
+        
+        poisonAura = new GameObject("PoisonAura");
+        poisonAura.transform.SetParent(transform, false);
+        
+        // Visual - green circle
+        var lr = poisonAura.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.positionCount = 24;
+        lr.widthMultiplier = 0.05f;
+        lr.startColor = new Color(0.5f, 1f, 0f, 0.6f); // Semi-transparent lime
+        lr.endColor = lr.startColor;
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        material.renderQueue = 3000;
+        lr.material = material;
+        lr.sortingOrder = 5;
+        
+        // Poison circle
+        float radius = 2f;
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float angle = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
+        
+        // Poison damage component
+        var col = poisonAura.AddComponent<CircleCollider2D>();
+        col.isTrigger = true;
+        col.radius = 2f;
+        
+        var poison = poisonAura.AddComponent<PoisonAura>();
+        poison.poisonDamage = 3f;
+    }
+    
+    public void CreateAdditionalOrbs(int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            GameObject newOrb = new GameObject($"OrbitingSphere_{additionalOrbs.Count + 1}");
+            newOrb.transform.SetParent(transform, false);
+            
+            // Position at different angles
+            float angle = (additionalOrbs.Count + 1) * (360f / (count + 1)) * Mathf.Deg2Rad;
+            newOrb.transform.localPosition = new Vector3(Mathf.Cos(angle) * 2f, Mathf.Sin(angle) * 2f, 0f);
+            
+            // Same visual as main orb
+            var sr = newOrb.AddComponent<SpriteRenderer>();
+            var tex = new Texture2D(16, 16, TextureFormat.RGBA32, false);
+            var cols = new Color32[16 * 16];
+            
+            Vector2 center = new Vector2(8f, 8f);
+            float radius = 6f;
+            Color purpleColor = new Color(0.8f, 0f, 0.8f, 1f);
+            
+            for (int y = 0; y < 16; y++)
+            {
+                for (int x = 0; x < 16; x++)
+                {
+                    float dist = Vector2.Distance(new Vector2(x, y), center);
+                    cols[y * 16 + x] = dist <= radius ? purpleColor : Color.clear;
+                }
+            }
+            
+            tex.SetPixels32(cols);
+            tex.Apply();
+            
+            var sprite = Sprite.Create(tex, new Rect(0, 0, 16, 16), new Vector2(0.5f, 0.5f), 64f);
+            sr.sprite = sprite;
+            sr.sortingOrder = 10;
+            
+            // Collider and damage
+            var col = newOrb.AddComponent<CircleCollider2D>();
+            col.isTrigger = true;
+            col.radius = 0.2f;
+            
+            var damage = newOrb.AddComponent<OrbitingSphere>();
+            damage.damage = 15f;
+            
+            additionalOrbs.Add(newOrb);
+        }
+    }
+    
+    void CreateCriticalHitEffect(Vector3 position)
+    {
+        GameObject effect = new GameObject("CriticalHitEffect");
+        effect.transform.position = position;
+        
+        var lr = effect.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.positionCount = 8;
+        lr.widthMultiplier = 0.15f;
+        lr.startColor = Color.yellow;
+        lr.endColor = Color.red;
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        lr.material = material;
+        lr.sortingOrder = 25;
+        
+        // Create star pattern
+        float radius = 0.3f;
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float angle = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            float r = (i % 2 == 0) ? radius : radius * 0.5f; // Alternating radius for star shape
+            lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * r, Mathf.Sin(angle) * r, 0f));
+        }
+        
+        Destroy(effect, 0.5f);
     }
 }

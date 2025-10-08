@@ -276,15 +276,11 @@ public class Enemy : MonoBehaviour
             Instantiate(deathEffect, transform.position, Quaternion.identity);
         }
 
-        // Drop experience
+        // Drop experience hemen
         SpawnExperienceOrb();
 
-        // Disable components
-        if (rb != null)
-            rb.simulated = false;
-
-        // Destroy after delay
-        Destroy(gameObject, 0.5f);
+        // Hemen yok et - gecikme yok
+        Destroy(gameObject);
     }
 
     void SpawnExperienceOrb()
