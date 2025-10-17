@@ -6,6 +6,9 @@ public class PlayerController : MonoBehaviour
 {
     [Header("Control Settings")]
     public bool manualControl = true; // WASD + mouse aim
+    [Header("Player Class")]
+    public PlayerClass playerClass = PlayerClass.Ranger;
+    
     [Header("Simple Shooting")]
     public bool useSimpleShooting = true; // if true, ignore WeaponSystem and shoot basic projectile on LMB
     public Transform firePoint; // optional; if null, use player position
@@ -19,6 +22,12 @@ public class PlayerController : MonoBehaviour
     public float moveSpeed = 5f;
     public float rotationSpeed = 10f;
     public float pickupRange = 2f;
+    
+    [Header("Melee Settings")]
+    public float meleeRange = 2f;
+    public float meleeAttackRate = 1f; // 1 attack per second
+    public float meleeAttackAngle = 90f; // 90 degree attack cone
+    private float _lastMeleeAttackTime = 0f;
 
     [Header("Combat Settings")]
     public float maxHealth = 100f;
@@ -45,7 +54,7 @@ public class PlayerController : MonoBehaviour
     private GameObject orbitingSphere;
     public float sphereOrbitSpeed = 120f; // degrees per second
     
-    [Header("Advanced Skills")]
+    [Header("Ranger Skills")]
     public float criticalChance = 0f;
     public float criticalMultiplier = 2f;
     public bool hasExplosiveShots = false;
@@ -72,6 +81,50 @@ public class PlayerController : MonoBehaviour
     public bool hasShieldReflection = false;
     public float orbDamage = 10f;
     
+    [Header("Melee Skills")]
+    public bool hasBerserker = false;
+    public float berserkerThreshold = 0.5f; // Activate when health < 50%
+    public float berserkerAttackSpeedBonus = 2f;
+    public bool hasGroundSlam = false;
+    public float slamRadius = 3f;
+    public float slamDamage = 40f;
+    public float slamCooldown = 3f;
+    private float lastSlamTime = 0f;
+    public bool hasBloodThirst = false;
+    public int bloodThirstStacks = 0;
+    public float bloodThirstDamagePerStack = 5f;
+    public float bloodThirstDuration = 10f;
+    private float bloodThirstTimer = 0f;
+    public bool hasIronSkin = false;
+    public float ironSkinReduction = 0.3f; // 30% damage reduction
+    public bool hasCharge = false;
+    public float chargeDistance = 5f;
+    public float chargeDamage = 30f;
+    public float chargeCooldown = 5f;
+    private float lastChargeTime = 0f;
+    public bool hasWhirlwind = false;
+    public float whirlwindDuration = 2f;
+    public float whirlwindCooldown = 8f;
+    private float lastWhirlwindTime = 0f;
+    private bool isWhirlwinding = false;
+    public bool hasIntimidation = false;
+    public float intimidationRadius = 4f;
+    public float intimidationSlowAmount = 0.5f;
+    public bool hasRegeneration = false;
+    public float regenRate = 2f; // HP per second
+    public bool hasDoubleStrike = false;
+    public float doubleStrikeChance = 0.25f;
+    public bool hasEarthquake = false;
+    public int earthquakeWaves = 3;
+    public float earthquakeRange = 6f;
+    
+    // Auto-trigger cooldown timers
+    private float lastAutoSlamTime = 0f;
+    private float lastAutoChargeTime = 0f;
+    private float lastAutoWhirlwindTime = 0f;
+    private float whirlwindTriggerDamage = 0f; // Accumulated damage for whirlwind trigger
+    private float whirlwindDamageThreshold = 50f; // Damage threshold to trigger whirlwind
+    
     private GameObject poisonAura;
     private List<GameObject> additionalOrbs = new List<GameObject>();
 
@@ -91,6 +144,9 @@ public class PlayerController : MonoBehaviour
         weaponSystem = FindObjectOfType<WeaponSystem>();
         experienceSystem = FindObjectOfType<ExperienceSystem>();
 
+        // Configure player based on selected class
+        ConfigureForClass(ClassSelectionManager.selectedClass);
+        
         originalSpeed = moveSpeed;
         currentHealth = maxHealth;
 
@@ -137,6 +193,19 @@ public class PlayerController : MonoBehaviour
     
     void UpdateSkillTimers()
     {
+        // Ranger skills
+        if (playerClass == PlayerClass.Ranger)
+        {
+            UpdateRangerSkills();
+        }
+        else if (playerClass == PlayerClass.Melee)
+        {
+            UpdateMeleeSkills();
+        }
+    }
+    
+    void UpdateRangerSkills()
+    {
         // Speed boost timer
         if (speedBoostTimer > 0f)
         {
@@ -164,6 +233,72 @@ public class PlayerController : MonoBehaviour
         if (hasSpeedBoost && currentHealth < maxHealth * 0.3f && speedBoostTimer <= 0f)
         {
             ActivateSpeedBoost();
+        }
+    }
+    
+    void UpdateMeleeSkills()
+    {
+        // Blood thirst timer
+        if (bloodThirstTimer > 0f)
+        {
+            bloodThirstTimer -= Time.deltaTime;
+            if (bloodThirstTimer <= 0f)
+            {
+                bloodThirstStacks = 0; // Reset stacks when timer runs out
+            }
+        }
+        
+        // Regeneration
+        if (hasRegeneration && currentHealth < maxHealth)
+        {
+            float regenAmount = regenRate * Time.deltaTime;
+            Heal(regenAmount);
+        }
+        
+        // Berserker activation check
+        if (hasBerserker && currentHealth < maxHealth * berserkerThreshold)
+        {
+            // Berserker is active - this affects attack rate in combat
+        }
+        
+        // Intimidation effect
+        if (hasIntimidation)
+        {
+            ApplyIntimidation();
+        }
+        
+        // Passive Ground Slam - triggers automatically when surrounded
+        if (hasGroundSlam && Time.time - lastSlamTime >= slamCooldown)
+        {
+            CheckAutoGroundSlam();
+        }
+        
+        // Passive Charge - triggers automatically when low health
+        if (hasCharge && Time.time - lastChargeTime >= chargeCooldown)
+        {
+            CheckAutoCharge();
+        }
+        
+        // Passive Whirlwind - triggers when surrounded by many enemies or damage threshold
+        if (hasWhirlwind)
+        {
+            // Decay whirlwind damage counter over time (lose 10 damage per second)
+            if (whirlwindTriggerDamage > 0)
+            {
+                whirlwindTriggerDamage = Mathf.Max(0, whirlwindTriggerDamage - 10f * Time.deltaTime);
+            }
+            
+            // Check for auto-trigger
+            if (Time.time - lastWhirlwindTime >= whirlwindCooldown && !isWhirlwinding)
+            {
+                CheckAutoWhirlwind();
+            }
+        }
+        
+        // Earthquake - triggers automatically after ground slam
+        if (hasEarthquake && Time.time - lastSlamTime < 0.5f && Time.time - lastSlamTime > 0.1f)
+        {
+            // Earthquake happens automatically after slam
         }
     }
     
@@ -219,9 +354,13 @@ public class PlayerController : MonoBehaviour
         // Fire while holding LMB
         if (Input.GetMouseButton(0))
         {
-            if (useSimpleShooting)
+            if (playerClass == PlayerClass.Ranger && useSimpleShooting)
             {
                 TrySimpleFire(mouseWorld);
+            }
+            else if (playerClass == PlayerClass.Melee)
+            {
+                TryMeleeAttack();
             }
             else if (weaponSystem != null && weaponSystem.isActiveAndEnabled)
             {
@@ -439,6 +578,20 @@ public class PlayerController : MonoBehaviour
     public void TakeDamage(float damage)
     {
         if (Time.time - lastDamageTime < damageCooldown) return;
+
+        // Apply Iron Skin damage reduction for melee class
+        if (hasIronSkin && playerClass == PlayerClass.Melee)
+        {
+            damage *= (1f - ironSkinReduction);
+            Debug.Log($"Iron Skin reduced damage to: {damage}");
+        }
+
+        // Add damage to whirlwind trigger counter (for melee class)
+        if (playerClass == PlayerClass.Melee && hasWhirlwind)
+        {
+            whirlwindTriggerDamage += damage;
+            Debug.Log($"Whirlwind damage counter: {whirlwindTriggerDamage}/{whirlwindDamageThreshold}");
+        }
 
         currentHealth -= damage;
         lastDamageTime = Time.time;
@@ -758,5 +911,617 @@ public class PlayerController : MonoBehaviour
         }
         
         Destroy(effect, 0.5f);
+    }
+    
+    void TryMeleeAttack()
+    {
+        float attackRate = GetCurrentAttackRate();
+        if (Time.time - _lastMeleeAttackTime < 1f / attackRate)
+            return;
+        
+        _lastMeleeAttackTime = Time.time;
+        PerformMeleeAttack();
+        
+        // Double strike chance
+        if (hasDoubleStrike && Random.Range(0f, 1f) < doubleStrikeChance)
+        {
+            // Slight delay for double strike
+            StartCoroutine(DelayedDoubleStrike());
+        }
+    }
+    
+    System.Collections.IEnumerator DelayedDoubleStrike()
+    {
+        yield return new WaitForSeconds(0.1f);
+        PerformMeleeAttack();
+    }
+    
+    void PerformMeleeAttack()
+    {
+        // Get current damage including blood thirst
+        float finalDamage = GetCurrentDamage();
+        
+        // Critical hit check for melee too (if ranger skills somehow apply)
+        bool isCritical = Random.Range(0f, 1f) < criticalChance;
+        if (isCritical)
+        {
+            finalDamage *= criticalMultiplier;
+            Debug.Log("MELEE CRITICAL HIT!");
+            CreateCriticalHitEffect(transform.position);
+        }
+        
+        // Find enemies in melee range
+        Vector3 playerPos = transform.position;
+        Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        mousePos.z = 0f;
+        
+        Vector3 attackDirection = (mousePos - playerPos).normalized;
+        
+        // Find all enemies in range
+        Collider2D[] nearbyEnemies = Physics2D.OverlapCircleAll(playerPos, meleeRange);
+        
+        foreach (var col in nearbyEnemies)
+        {
+            Enemy enemy = col.GetComponent<Enemy>();
+            if (enemy != null && !enemy.IsDead())
+            {
+                Vector3 enemyDirection = (enemy.transform.position - playerPos).normalized;
+                float angle = Vector3.Angle(attackDirection, enemyDirection);
+                
+                // Check if enemy is within attack angle
+                if (angle <= meleeAttackAngle / 2f)
+                {
+                    enemy.TakeDamage(finalDamage);
+                    
+                    // Life steal
+                    if (lifeStealPercent > 0)
+                    {
+                        float healAmount = finalDamage * lifeStealPercent;
+                        Heal(healAmount);
+                    }
+                    
+                    // Melee hit effect
+                    CreateMeleeHitEffect(enemy.transform.position);
+                }
+            }
+        }
+        
+        // Visual attack effect
+        CreateMeleeSwipeEffect(attackDirection);
+    }
+    
+    void CreateMeleeHitEffect(Vector3 position)
+    {
+        GameObject effect = new GameObject("MeleeHitEffect");
+        effect.transform.position = position;
+        
+        var lr = effect.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.positionCount = 6;
+        lr.widthMultiplier = 0.2f;
+        lr.startColor = Color.red;
+        lr.endColor = Color.yellow;
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        lr.material = material;
+        lr.sortingOrder = 25;
+        
+        // Create impact lines
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float angle = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            float radius = 0.3f;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
+        
+        Destroy(effect, 0.2f);
+    }
+    
+    void CreateMeleeSwipeEffect(Vector3 direction)
+    {
+        GameObject swipe = new GameObject("MeleeSwipe");
+        swipe.transform.position = transform.position;
+        
+        var lr = swipe.AddComponent<LineRenderer>();
+        lr.useWorldSpace = true;
+        lr.positionCount = 10;
+        lr.widthMultiplier = 0.15f;
+        lr.startColor = new Color(1f, 0.5f, 0f, 0.8f); // Orange
+        lr.endColor = new Color(1f, 0f, 0f, 0.3f); // Red
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        lr.material = material;
+        lr.sortingOrder = 20;
+        
+        // Create arc swipe
+        Vector3 startPos = transform.position;
+        float startAngle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - meleeAttackAngle / 2f;
+        
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float progress = i / (float)(lr.positionCount - 1);
+            float angle = startAngle + (meleeAttackAngle * progress);
+            float angleRad = angle * Mathf.Deg2Rad;
+            
+            Vector3 pos = startPos + new Vector3(Mathf.Cos(angleRad), Mathf.Sin(angleRad), 0f) * meleeRange;
+            lr.SetPosition(i, pos);
+        }
+        
+        Destroy(swipe, 0.3f);
+    }
+    
+    void ApplyIntimidation()
+    {
+        // Slow down nearby enemies
+        Collider2D[] nearbyEnemies = Physics2D.OverlapCircleAll(transform.position, intimidationRadius);
+        
+        foreach (var col in nearbyEnemies)
+        {
+            Enemy enemy = col.GetComponent<Enemy>();
+            if (enemy != null)
+            {
+                // Apply slow effect (would need to modify Enemy class to support this)
+                // For now, just a placeholder
+                Debug.Log("Intimidating enemy: " + enemy.name);
+            }
+        }
+    }
+    
+    void OnEnemyKilled()
+    {
+        // Called when this player kills an enemy
+        if (hasBloodThirst && playerClass == PlayerClass.Melee)
+        {
+            // Check if we have the stack upgrade through UpgradeSystem
+            UpgradeSystem upgradeSystem = FindObjectOfType<UpgradeSystem>();
+            bool hasStackUpgrade = upgradeSystem != null; // Simplified check for now
+            int maxStacks = hasStackUpgrade ? 8 : 5;
+            
+            if (bloodThirstStacks < maxStacks)
+            {
+                bloodThirstStacks++;
+                bloodThirstTimer = bloodThirstDuration;
+                Debug.Log($"Blood Thirst stacks: {bloodThirstStacks}");
+            }
+        }
+    }
+    
+    public float GetCurrentDamage()
+    {
+        float damage = simpleDamage;
+        
+        // Add blood thirst bonus for melee
+        if (hasBloodThirst && playerClass == PlayerClass.Melee)
+        {
+            damage += bloodThirstStacks * bloodThirstDamagePerStack;
+        }
+        
+        return damage;
+    }
+    
+    public float GetCurrentAttackRate()
+    {
+        float rate = (playerClass == PlayerClass.Melee) ? meleeAttackRate : simpleFireRate;
+        
+        // Berserker bonus
+        if (hasBerserker && playerClass == PlayerClass.Melee && currentHealth < maxHealth * berserkerThreshold)
+        {
+            rate *= berserkerAttackSpeedBonus;
+        }
+        
+        return rate;
+    }
+    
+    public void TrySpecialAttack(string attackType)
+    {
+        if (playerClass != PlayerClass.Melee) return;
+        
+        switch (attackType)
+        {
+            case "GroundSlam":
+                if (hasGroundSlam && Time.time - lastSlamTime >= slamCooldown)
+                {
+                    PerformGroundSlam();
+                }
+                break;
+                
+            case "Charge":
+                if (hasCharge && Time.time - lastChargeTime >= chargeCooldown)
+                {
+                    PerformCharge();
+                }
+                break;
+                
+            case "Whirlwind":
+                if (hasWhirlwind && Time.time - lastWhirlwindTime >= whirlwindCooldown)
+                {
+                    StartCoroutine(PerformWhirlwind());
+                }
+                break;
+        }
+    }
+    
+    void PerformGroundSlam()
+    {
+        lastSlamTime = Time.time;
+        
+        float damage = slamDamage;
+        float radius = slamRadius;
+        
+        // Find enemies in slam radius
+        Collider2D[] enemies = Physics2D.OverlapCircleAll(transform.position, radius);
+        
+        foreach (var col in enemies)
+        {
+            Enemy enemy = col.GetComponent<Enemy>();
+            if (enemy != null && !enemy.IsDead())
+            {
+                enemy.TakeDamage(damage);
+                OnEnemyKilled(); // Trigger blood thirst if enemy dies
+            }
+        }
+        
+        // Create slam effect
+        CreateGroundSlamEffect(radius);
+        
+        // Earthquake waves if unlocked
+        if (hasEarthquake)
+        {
+            StartCoroutine(CreateEarthquakeWaves());
+        }
+    }
+    
+    void PerformCharge()
+    {
+        lastChargeTime = Time.time;
+        
+        Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        mousePos.z = 0f;
+        Vector3 direction = (mousePos - transform.position).normalized;
+        
+        // Move player and damage enemies along the path
+        StartCoroutine(ChargeAttack(direction));
+    }
+    
+    System.Collections.IEnumerator PerformWhirlwind()
+    {
+        lastWhirlwindTime = Time.time;
+        isWhirlwinding = true;
+        
+        float duration = whirlwindDuration;
+        float timer = 0f;
+        
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+            
+            // Damage all nearby enemies
+            Collider2D[] enemies = Physics2D.OverlapCircleAll(transform.position, meleeRange);
+            foreach (var col in enemies)
+            {
+                Enemy enemy = col.GetComponent<Enemy>();
+                if (enemy != null && !enemy.IsDead())
+                {
+                    enemy.TakeDamage(GetCurrentDamage() * 0.5f); // Reduced damage for continuous hits
+                }
+            }
+            
+            // Visual whirlwind effect
+            CreateWhirlwindEffect();
+            
+            yield return new WaitForSeconds(0.1f); // 10 times per second
+        }
+        
+        isWhirlwinding = false;
+    }
+    
+    System.Collections.IEnumerator ChargeAttack(Vector3 direction)
+    {
+        Vector3 startPos = transform.position;
+        Vector3 endPos = startPos + direction * chargeDistance;
+        
+        float chargeSpeed = 20f;
+        float distance = Vector3.Distance(startPos, endPos);
+        float duration = distance / chargeSpeed;
+        
+        float timer = 0f;
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+            float progress = timer / duration;
+            
+            Vector3 newPos = Vector3.Lerp(startPos, endPos, progress);
+            transform.position = newPos;
+            
+            // Check for enemy collisions during charge
+            Collider2D[] enemies = Physics2D.OverlapCircleAll(transform.position, 0.8f);
+            foreach (var col in enemies)
+            {
+                Enemy enemy = col.GetComponent<Enemy>();
+                if (enemy != null && !enemy.IsDead())
+                {
+                    enemy.TakeDamage(chargeDamage);
+                    OnEnemyKilled();
+                }
+            }
+            
+            yield return null;
+        }
+    }
+    
+    System.Collections.IEnumerator CreateEarthquakeWaves()
+    {
+        for (int i = 0; i < earthquakeWaves; i++)
+        {
+            float waveRadius = (i + 1) * (earthquakeRange / earthquakeWaves);
+            CreateEarthquakeWave(waveRadius);
+            yield return new WaitForSeconds(0.2f);
+        }
+    }
+    
+    void CreateGroundSlamEffect(float radius)
+    {
+        GameObject effect = new GameObject("GroundSlamEffect");
+        effect.transform.position = transform.position;
+        
+        var lr = effect.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.positionCount = 20;
+        lr.widthMultiplier = 0.3f;
+        lr.startColor = Color.yellow;
+        lr.endColor = Color.red;
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        lr.material = material;
+        lr.sortingOrder = 15;
+        
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float angle = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
+        
+        Destroy(effect, 0.5f);
+    }
+    
+    void CreateWhirlwindEffect()
+    {
+        GameObject effect = new GameObject("WhirlwindEffect");
+        effect.transform.position = transform.position;
+        effect.transform.SetParent(transform);
+        
+        var lr = effect.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.positionCount = 12;
+        lr.widthMultiplier = 0.2f;
+        lr.startColor = new Color(1f, 0.5f, 0f, 0.8f);
+        lr.endColor = new Color(1f, 0f, 0f, 0.3f);
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        lr.material = material;
+        lr.sortingOrder = 10;
+        
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float angle = (i / (float)lr.positionCount) * Mathf.PI * 2f + Time.time * 10f;
+            float radius = meleeRange * (0.8f + 0.2f * Mathf.Sin(Time.time * 15f));
+            lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
+        
+        Destroy(effect, 0.1f);
+    }
+    
+    void CreateEarthquakeWave(float radius)
+    {
+        GameObject wave = new GameObject("EarthquakeWave");
+        wave.transform.position = transform.position;
+        
+        var lr = wave.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.positionCount = 16;
+        lr.widthMultiplier = 0.15f;
+        lr.startColor = new Color(0.6f, 0.3f, 0f, 0.8f);
+        lr.endColor = new Color(1f, 0.8f, 0f, 0.3f);
+        
+        var material = new Material(Shader.Find("Sprites/Default"));
+        lr.material = material;
+        lr.sortingOrder = 5;
+        
+        for (int i = 0; i < lr.positionCount; i++)
+        {
+            float angle = (i / (float)lr.positionCount) * Mathf.PI * 2f;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
+        
+        // Damage enemies in wave
+        Collider2D[] enemies = Physics2D.OverlapCircleAll(transform.position, radius);
+        foreach (var col in enemies)
+        {
+            Enemy enemy = col.GetComponent<Enemy>();
+            if (enemy != null && !enemy.IsDead())
+            {
+                enemy.TakeDamage(slamDamage * 0.6f); // Reduced damage for waves
+            }
+        }
+        
+        Destroy(wave, 0.8f);
+    }
+    
+    // Passive skill auto-triggers
+    void CheckAutoGroundSlam()
+    {
+        // Check cooldown first
+        if (Time.time - lastAutoSlamTime < slamCooldown) return;
+        
+        // Trigger when surrounded by 3+ enemies in close range
+        Collider2D[] nearbyEnemies = Physics2D.OverlapCircleAll(transform.position, meleeRange * 1.2f);
+        int enemyCount = 0;
+        
+        foreach (var col in nearbyEnemies)
+        {
+            Enemy enemy = col.GetComponent<Enemy>();
+            if (enemy != null && !enemy.IsDead())
+            {
+                enemyCount++;
+            }
+        }
+        
+        if (enemyCount >= 3)
+        {
+            PerformGroundSlam();
+            lastAutoSlamTime = Time.time; // Set cooldown
+            Debug.Log("Auto Ground Slam! Surrounded by " + enemyCount + " enemies!");
+        }
+    }
+    
+    void CheckAutoCharge()
+    {
+        // Check cooldown first
+        if (Time.time - lastAutoChargeTime < chargeCooldown) return;
+        
+        // Trigger when health is low (30%) and there's a distant enemy
+        if (currentHealth < maxHealth * 0.3f)
+        {
+            Enemy nearestEnemy = FindNearestEnemy();
+            if (nearestEnemy != null)
+            {
+                float distance = Vector2.Distance(transform.position, nearestEnemy.transform.position);
+                if (distance > meleeRange * 2f && distance < chargeDistance)
+                {
+                    Vector3 direction = (nearestEnemy.transform.position - transform.position).normalized;
+                    StartCoroutine(ChargeAttack(direction));
+                    lastAutoChargeTime = Time.time; // Set cooldown
+                    Debug.Log("Auto Charge! Low health, distant enemy!");
+                }
+            }
+        }
+    }
+    
+    void CheckAutoWhirlwind()
+    {
+        // Check cooldown first
+        if (Time.time - lastAutoWhirlwindTime < whirlwindCooldown) return;
+        if (isWhirlwinding) return; // Already whirlwinding
+        
+        // Trigger based on accumulated damage taken OR being surrounded by many enemies
+        bool shouldTrigger = false;
+        string triggerReason = "";
+        
+        // Option 1: Accumulated damage threshold (50 damage taken recently)
+        if (whirlwindTriggerDamage >= whirlwindDamageThreshold)
+        {
+            shouldTrigger = true;
+            triggerReason = "damage threshold reached!";
+            whirlwindTriggerDamage = 0f; // Reset counter
+        }
+        
+        // Option 2: Surrounded by 6+ enemies (more than ground slam)
+        if (!shouldTrigger)
+        {
+            Collider2D[] nearbyEnemies = Physics2D.OverlapCircleAll(transform.position, meleeRange * 1.8f);
+            int enemyCount = 0;
+            
+            foreach (var col in nearbyEnemies)
+            {
+                Enemy enemy = col.GetComponent<Enemy>();
+                if (enemy != null && !enemy.IsDead())
+                {
+                    enemyCount++;
+                }
+            }
+            
+            if (enemyCount >= 6)
+            {
+                shouldTrigger = true;
+                triggerReason = "surrounded by " + enemyCount + " enemies!";
+            }
+        }
+        
+        if (shouldTrigger)
+        {
+            StartCoroutine(PerformWhirlwind());
+            lastAutoWhirlwindTime = Time.time; // Set cooldown
+            Debug.Log("Auto Whirlwind! Trigger: " + triggerReason);
+        }
+    }
+    
+    Enemy FindNearestEnemy()
+    {
+        Enemy nearest = null;
+        float nearestDistance = float.MaxValue;
+        
+        Enemy[] allEnemies = FindObjectsOfType<Enemy>();
+        foreach (Enemy enemy in allEnemies)
+        {
+            if (enemy != null && !enemy.IsDead())
+            {
+                float distance = Vector2.Distance(transform.position, enemy.transform.position);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearest = enemy;
+                }
+            }
+        }
+        
+        return nearest;
+    }
+    
+    public void ConfigureForClass(PlayerClass selectedClass)
+    {
+        playerClass = selectedClass;
+        
+        switch (playerClass)
+        {
+            case PlayerClass.Ranger:
+                ConfigureRangerClass();
+                break;
+                
+            case PlayerClass.Melee:
+                ConfigureMeleeClass();
+                break;
+        }
+        
+        Debug.Log($"Player configured as: {playerClass}");
+    }
+    
+    void ConfigureRangerClass()
+    {
+        // Ranger stats
+        moveSpeed = 5f;
+        maxHealth = 100f;
+        currentHealth = maxHealth;
+        simpleDamage = 10f;
+        simpleFireRate = 2f;
+        useSimpleShooting = true;
+        
+        // Visual: Keep normal size and color
+        var sr = GetComponent<SpriteRenderer>();
+        if (sr != null)
+        {
+            sr.color = Color.cyan; // Blue for ranger
+        }
+    }
+    
+    void ConfigureMeleeClass()
+    {
+        // Melee stats - stronger but slower
+        moveSpeed = 3f; // Slower movement
+        maxHealth = 150f; // More health
+        currentHealth = maxHealth;
+        simpleDamage = 25f; // More damage per hit
+        meleeRange = 2.5f;
+        meleeAttackRate = 1.5f; // Attacks per second
+        useSimpleShooting = false; // No ranged attacks!
+        
+        // Visual: Slightly larger and different color
+        var sr = GetComponent<SpriteRenderer>();
+        if (sr != null)
+        {
+            sr.color = Color.red; // Red for melee
+            transform.localScale = Vector3.one * 1.2f; // Bigger
+        }
     }
 }

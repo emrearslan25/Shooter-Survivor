@@ -20,6 +20,7 @@ public class UpgradeSystem : MonoBehaviour
 
     public enum UpgradeType
     {
+        // Basic upgrades (both classes)
         Health,
         Speed,
         Damage,
@@ -28,10 +29,11 @@ public class UpgradeSystem : MonoBehaviour
         NewWeapon,
         WeaponUpgrade,
         Shield,
+        
+        // RANGER SKILLS
         DualShot,
         ShieldExpansion,
         OrbitingSphere,
-        // Main Skills (one-time only)
         CriticalHit,
         ExplosiveShots,
         FreezingShots,
@@ -42,27 +44,61 @@ public class UpgradeSystem : MonoBehaviour
         TimeStop,
         MultipleOrbs,
         ShieldReflection,
-        // Sub-skills for advanced abilities
-        CriticalDamage,        // Critical hit damage multiplier
-        CriticalChance,        // Critical hit chance increase
-        ExplosionRadius,       // Explosive shots area increase
-        ExplosionDamage,       // Explosive shots damage increase
-        FreezeChance,          // Freezing shots proc chance
-        FreezeDuration,        // Freezing effect duration
-        LifeStealAmount,       // Life steal percentage increase
-        LifeStealRange,        // Life steal from nearby kills
-        SpeedBoostDuration,    // Speed boost effect time
-        SpeedBoostThreshold,   // Health threshold for activation
-        PoisonDamage,          // Poison aura damage increase
-        PoisonRadius,          // Poison aura range increase
-        RicochetCount,         // Number of ricochets
-        RicochetRange,         // Ricochet detection range
-        TimeStopDuration,      // Time stop effect duration
-        TimeStopChance,        // Random time stop chance
-        OrbDamage,             // Orbiting sphere damage
-        OrbSpeed,              // Orbiting sphere rotation speed
-        ShieldDamage,          // Shield reflection damage
-        ShieldRadius           // Shield size increase
+        // Ranger sub-skills
+        CriticalDamage,
+        CriticalChance,
+        ExplosionRadius,
+        ExplosionDamage,
+        FreezeChance,
+        FreezeDuration,
+        LifeStealAmount,
+        LifeStealRange,
+        SpeedBoostDuration,
+        SpeedBoostThreshold,
+        PoisonDamage,
+        PoisonRadius,
+        RicochetCount,
+        RicochetRange,
+        TimeStopDuration,
+        TimeStopChance,
+        OrbDamage,
+        OrbSpeed,
+        ShieldDamage,
+        ShieldRadius,
+        
+        // MELEE EXCLUSIVE SKILLS
+        Berserker,             // Attack speed increases when health is low
+        GroundSlam,            // AOE slam attack
+        BloodThirst,           // Kill enemies to gain damage boost
+        IronSkin,              // Reduce damage taken
+        Charge,                // Dash through enemies
+        Whirlwind,             // Spin attack hitting all around
+        Intimidation,          // Enemies move slower near you
+        Regeneration,          // Passive health regeneration
+        DoubleStrike,          // Chance to attack twice
+        Earthquake,            // Slam creates shockwaves
+        
+        // Melee sub-skills
+        BerserkerRage,         // Berserker effect enhanced
+        BerserkerDuration,     // Berserker lasts longer
+        SlamRadius,            // Ground slam area increase
+        SlamDamage,            // Ground slam damage increase
+        BloodThirstStacks,     // More stacks of blood thirst
+        BloodThirstDuration,   // Blood thirst lasts longer
+        IronSkinArmor,         // More damage reduction
+        IronSkinReflection,    // Reflect damage back
+        ChargeDistance,        // Charge goes further
+        ChargeDamage,          // Charge does more damage
+        WhirlwindSpeed,        // Whirlwind spins faster
+        WhirlwindDuration,     // Whirlwind lasts longer
+        IntimidationRadius,    // Intimidation affects larger area
+        IntimidationSlow,      // Enemies slowed more
+        RegenRate,             // Regenerate health faster
+        RegenCombat,           // Regenerate even in combat
+        DoubleStrikeChance,    // Higher chance for double strike
+        DoubleStrikeCrit,      // Double strikes can crit
+        EarthquakeWaves,       // More earthquake waves
+        EarthquakeRange        // Earthquake travels further
     }
 
     [Header("Upgrade Settings")]
@@ -150,38 +186,14 @@ public class UpgradeSystem : MonoBehaviour
                 pool.Add(new UpgradeOption { name = "Döner Küre", description = "Etrafta dönen mor hasar küresi", type = UpgradeType.OrbitingSphere, value = 1 });
             }
             
-            // Main skills (one-time unlocks)
-            if (!unlockedSkills.Contains(UpgradeType.CriticalHit))
+            // Class-based skills
+            if (player != null && player.playerClass == PlayerClass.Ranger)
             {
-                pool.Add(new UpgradeOption { name = "Kritik Vuruş", description = "%15 şansla 2x hasar", type = UpgradeType.CriticalHit, value = 0.15f });
+                AddRangerSkills(pool);
             }
-            if (!unlockedSkills.Contains(UpgradeType.ExplosiveShots))
+            else if (player != null && player.playerClass == PlayerClass.Melee)
             {
-                pool.Add(new UpgradeOption { name = "Patlayıcı Mermiler", description = "Mermiler patlayarak alan hasarı verir", type = UpgradeType.ExplosiveShots, value = 1 });
-            }
-            if (!unlockedSkills.Contains(UpgradeType.FreezingShots))
-            {
-                pool.Add(new UpgradeOption { name = "Dondurucu Atış", description = "Düşmanları yavaşlatır", type = UpgradeType.FreezingShots, value = 1 });
-            }
-            if (!unlockedSkills.Contains(UpgradeType.LifeSteal))
-            {
-                pool.Add(new UpgradeOption { name = "Can Çalma", description = "Hasar verirken can kazanır", type = UpgradeType.LifeSteal, value = 0.2f });
-            }
-            if (!unlockedSkills.Contains(UpgradeType.SpeedBoost))
-            {
-                pool.Add(new UpgradeOption { name = "Hız Patlaması", description = "Düşük canda hız artışı", type = UpgradeType.SpeedBoost, value = 1 });
-            }
-            if (!unlockedSkills.Contains(UpgradeType.PoisonAura))
-            {
-                pool.Add(new UpgradeOption { name = "Zehir Aura", description = "Yakındaki düşmanlar zehirlenir", type = UpgradeType.PoisonAura, value = 1 });
-            }
-            if (!unlockedSkills.Contains(UpgradeType.RicochetShots))
-            {
-                pool.Add(new UpgradeOption { name = "Sekme Mermiler", description = "Mermiler düşmanlar arasında sekir", type = UpgradeType.RicochetShots, value = 2 });
-            }
-            if (!unlockedSkills.Contains(UpgradeType.TimeStop))
-            {
-                pool.Add(new UpgradeOption { name = "Zaman Durdurma", description = "Düşük canda zaman yavaşlar", type = UpgradeType.TimeStop, value = 1 });
+                AddMeleeSkills(pool);
             }
             
             if (!unlockedSkills.Contains(UpgradeType.MultipleOrbs) && player != null && player.hasOrbitingSphere)
@@ -703,11 +715,339 @@ public class UpgradeSystem : MonoBehaviour
                     takenUpgrades.Add(UpgradeType.OrbSpeed);
                 }
                 break;
+                
+            // MELEE SKILLS
+            case UpgradeType.Berserker:
+                if (player != null)
+                {
+                    player.hasBerserker = true;
+                    unlockedSkills.Add(UpgradeType.Berserker);
+                    takenUpgrades.Add(UpgradeType.Berserker);
+                }
+                break;
+                
+            case UpgradeType.GroundSlam:
+                if (player != null)
+                {
+                    player.hasGroundSlam = true;
+                    unlockedSkills.Add(UpgradeType.GroundSlam);
+                    takenUpgrades.Add(UpgradeType.GroundSlam);
+                }
+                break;
+                
+            case UpgradeType.BloodThirst:
+                if (player != null)
+                {
+                    player.hasBloodThirst = true;
+                    unlockedSkills.Add(UpgradeType.BloodThirst);
+                    takenUpgrades.Add(UpgradeType.BloodThirst);
+                }
+                break;
+                
+            case UpgradeType.IronSkin:
+                if (player != null)
+                {
+                    player.hasIronSkin = true;
+                    unlockedSkills.Add(UpgradeType.IronSkin);
+                    takenUpgrades.Add(UpgradeType.IronSkin);
+                }
+                break;
+                
+            case UpgradeType.Charge:
+                if (player != null)
+                {
+                    player.hasCharge = true;
+                    unlockedSkills.Add(UpgradeType.Charge);
+                    takenUpgrades.Add(UpgradeType.Charge);
+                }
+                break;
+                
+            case UpgradeType.Whirlwind:
+                if (player != null)
+                {
+                    player.hasWhirlwind = true;
+                    unlockedSkills.Add(UpgradeType.Whirlwind);
+                    takenUpgrades.Add(UpgradeType.Whirlwind);
+                }
+                break;
+                
+            case UpgradeType.Intimidation:
+                if (player != null)
+                {
+                    player.hasIntimidation = true;
+                    unlockedSkills.Add(UpgradeType.Intimidation);
+                    takenUpgrades.Add(UpgradeType.Intimidation);
+                }
+                break;
+                
+            case UpgradeType.Regeneration:
+                if (player != null)
+                {
+                    player.hasRegeneration = true;
+                    unlockedSkills.Add(UpgradeType.Regeneration);
+                    takenUpgrades.Add(UpgradeType.Regeneration);
+                }
+                break;
+                
+            case UpgradeType.DoubleStrike:
+                if (player != null)
+                {
+                    player.hasDoubleStrike = true;
+                    unlockedSkills.Add(UpgradeType.DoubleStrike);
+                    takenUpgrades.Add(UpgradeType.DoubleStrike);
+                }
+                break;
+                
+            case UpgradeType.Earthquake:
+                if (player != null)
+                {
+                    player.hasEarthquake = true;
+                    unlockedSkills.Add(UpgradeType.Earthquake);
+                    takenUpgrades.Add(UpgradeType.Earthquake);
+                }
+                break;
+                
+            // Melee sub-skills
+            case UpgradeType.BerserkerRage:
+                if (player != null)
+                {
+                    player.berserkerAttackSpeedBonus += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.BerserkerRage);
+                }
+                break;
+                
+            case UpgradeType.SlamRadius:
+                if (player != null)
+                {
+                    player.slamRadius += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.SlamRadius);
+                }
+                break;
+                
+            case UpgradeType.SlamDamage:
+                if (player != null)
+                {
+                    player.slamDamage += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.SlamDamage);
+                }
+                break;
+                
+            case UpgradeType.BloodThirstStacks:
+                if (player != null)
+                {
+                    // This will be handled in the skill logic
+                    takenUpgrades.Add(UpgradeType.BloodThirstStacks);
+                }
+                break;
+                
+            case UpgradeType.BloodThirstDuration:
+                if (player != null)
+                {
+                    player.bloodThirstDuration += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.BloodThirstDuration);
+                }
+                break;
+                
+            case UpgradeType.IronSkinArmor:
+                if (player != null)
+                {
+                    player.ironSkinReduction += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.IronSkinArmor);
+                }
+                break;
+                
+            case UpgradeType.ChargeDistance:
+                if (player != null)
+                {
+                    player.chargeDistance += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.ChargeDistance);
+                }
+                break;
+                
+            case UpgradeType.ChargeDamage:
+                if (player != null)
+                {
+                    player.chargeDamage += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.ChargeDamage);
+                }
+                break;
+                
+            case UpgradeType.WhirlwindDuration:
+                if (player != null)
+                {
+                    player.whirlwindDuration += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.WhirlwindDuration);
+                }
+                break;
+                
+            case UpgradeType.DoubleStrikeChance:
+                if (player != null)
+                {
+                    player.doubleStrikeChance += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.DoubleStrikeChance);
+                }
+                break;
+                
+            case UpgradeType.EarthquakeWaves:
+                if (player != null)
+                {
+                    player.earthquakeWaves += (int)upgrade.value;
+                    takenUpgrades.Add(UpgradeType.EarthquakeWaves);
+                }
+                break;
+                
+            case UpgradeType.EarthquakeRange:
+                if (player != null)
+                {
+                    player.earthquakeRange += upgrade.value;
+                    takenUpgrades.Add(UpgradeType.EarthquakeRange);
+                }
+                break;
         }
 
         Debug.Log($"Applied upgrade: {upgrade.name}");
     }
 
+    void AddRangerSkills(List<UpgradeOption> pool)
+    {
+        // Main Ranger skills
+        if (!unlockedSkills.Contains(UpgradeType.CriticalHit))
+        {
+            pool.Add(new UpgradeOption { name = "Kritik Vuruş", description = "%15 şansla 2x hasar", type = UpgradeType.CriticalHit, value = 0.15f });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.ExplosiveShots))
+        {
+            pool.Add(new UpgradeOption { name = "Patlayıcı Mermiler", description = "Mermiler patlayarak alan hasarı verir", type = UpgradeType.ExplosiveShots, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.FreezingShots))
+        {
+            pool.Add(new UpgradeOption { name = "Dondurucu Atış", description = "Düşmanları yavaşlatır", type = UpgradeType.FreezingShots, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.LifeSteal))
+        {
+            pool.Add(new UpgradeOption { name = "Can Çalma", description = "Hasar verirken can kazanır", type = UpgradeType.LifeSteal, value = 0.2f });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.PoisonAura))
+        {
+            pool.Add(new UpgradeOption { name = "Zehir Aura", description = "Yakındaki düşmanlar zehirlenir", type = UpgradeType.PoisonAura, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.RicochetShots))
+        {
+            pool.Add(new UpgradeOption { name = "Sekme Mermiler", description = "Mermiler düşmanlar arasında sekir", type = UpgradeType.RicochetShots, value = 2 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.TimeStop))
+        {
+            pool.Add(new UpgradeOption { name = "Zaman Durdurma", description = "Düşük canda zaman yavaşlar", type = UpgradeType.TimeStop, value = 1 });
+        }
+        
+        // Ranger sub-skills
+        if (unlockedSkills.Contains(UpgradeType.CriticalHit))
+        {
+            pool.Add(new UpgradeOption { name = "Kritik Hasarı", description = "Kritik vuruşlar 3x hasar verir", type = UpgradeType.CriticalDamage, value = 1f });
+            pool.Add(new UpgradeOption { name = "Kritik Şansı", description = "Kritik vuruş şansını +%10 artırır", type = UpgradeType.CriticalChance, value = 0.1f });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.ExplosiveShots))
+        {
+            pool.Add(new UpgradeOption { name = "Patlama Alanı", description = "Patlama yarıçapını +50% artırır", type = UpgradeType.ExplosionRadius, value = 0.75f });
+            pool.Add(new UpgradeOption { name = "Patlama Hasarı", description = "Patlama hasarını +%50 artırır", type = UpgradeType.ExplosionDamage, value = 0.5f });
+        }
+    }
+    
+    void AddMeleeSkills(List<UpgradeOption> pool)
+    {
+        // Main Melee skills (all passive)
+        if (!unlockedSkills.Contains(UpgradeType.Berserker))
+        {
+            pool.Add(new UpgradeOption { name = "Berserker Öfkesi", description = "Düşük canda otomatik saldırı hızı artışı", type = UpgradeType.Berserker, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.GroundSlam))
+        {
+            pool.Add(new UpgradeOption { name = "Otomatik Çarpma", description = "3+ düşmanla çevrilince otomatik alan saldırısı", type = UpgradeType.GroundSlam, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.BloodThirst))
+        {
+            pool.Add(new UpgradeOption { name = "Kan Emici", description = "Öldürme başına kalıcı hasar bonusu (5 stack)", type = UpgradeType.BloodThirst, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.IronSkin))
+        {
+            pool.Add(new UpgradeOption { name = "Demir Deri", description = "Sürekli %30 hasar azaltma korumas", type = UpgradeType.IronSkin, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.Charge))
+        {
+            pool.Add(new UpgradeOption { name = "Savaş Çılgınlığı", description = "Düşük canda uzak düşmanlara otomatik atılır", type = UpgradeType.Charge, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.Whirlwind))
+        {
+            pool.Add(new UpgradeOption { name = "Kasırga Savunma", description = "5+ düşmanla çevrilince otomatik dönerek saldırır", type = UpgradeType.Whirlwind, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.Intimidation))
+        {
+            pool.Add(new UpgradeOption { name = "Korku Alanı", description = "Yakındaki düşmanlar sürekli yavaşlar ve hasar alır", type = UpgradeType.Intimidation, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.Regeneration))
+        {
+            pool.Add(new UpgradeOption { name = "Hızlı İyileşme", description = "Saniyede 2 can otomatik yenilenir", type = UpgradeType.Regeneration, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.DoubleStrike))
+        {
+            pool.Add(new UpgradeOption { name = "Çift Saldırı", description = "%25 şansla otomatik iki kez vuruş", type = UpgradeType.DoubleStrike, value = 1 });
+        }
+        if (!unlockedSkills.Contains(UpgradeType.Earthquake))
+        {
+            pool.Add(new UpgradeOption { name = "Şok Dalgaları", description = "Yer çarpması otomatik 3 dalga yaratır", type = UpgradeType.Earthquake, value = 1 });
+        }
+        
+        // Melee sub-skills
+        if (unlockedSkills.Contains(UpgradeType.Berserker))
+        {
+            pool.Add(new UpgradeOption { name = "Berserker Öfkesi", description = "Berserker %100 daha güçlü", type = UpgradeType.BerserkerRage, value = 1f });
+            pool.Add(new UpgradeOption { name = "Berserker Süresi", description = "Berserker daha uzun sürer", type = UpgradeType.BerserkerDuration, value = 5f });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.GroundSlam))
+        {
+            pool.Add(new UpgradeOption { name = "Çarpma Alanı", description = "Yer çarpması alanını +50% artırır", type = UpgradeType.SlamRadius, value = 1.5f });
+            pool.Add(new UpgradeOption { name = "Çarpma Hasarı", description = "Yer çarpması hasarını +%75 artırır", type = UpgradeType.SlamDamage, value = 30f });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.BloodThirst))
+        {
+            pool.Add(new UpgradeOption { name = "Kan Yığını", description = "Daha fazla kan yığını biriktir", type = UpgradeType.BloodThirstStacks, value = 3 });
+            pool.Add(new UpgradeOption { name = "Kan Süresi", description = "Kan bonusu 2x uzun sürer", type = UpgradeType.BloodThirstDuration, value = 10f });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.IronSkin))
+        {
+            pool.Add(new UpgradeOption { name = "Zırh Kalınlığı", description = "%50 hasar azaltma", type = UpgradeType.IronSkinArmor, value = 0.2f });
+            pool.Add(new UpgradeOption { name = "Hasar Yansıtma", description = "Alınan hasarın %25'ini yansıtır", type = UpgradeType.IronSkinReflection, value = 1 });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.Charge))
+        {
+            pool.Add(new UpgradeOption { name = "Hücum Mesafesi", description = "2x uzak mesafeye hücum", type = UpgradeType.ChargeDistance, value = 5f });
+            pool.Add(new UpgradeOption { name = "Hücum Hasarı", description = "Hücum hasarını +%100 artırır", type = UpgradeType.ChargeDamage, value = 30f });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.Whirlwind))
+        {
+            pool.Add(new UpgradeOption { name = "Kasırga Hızı", description = "2x hızlı döner", type = UpgradeType.WhirlwindSpeed, value = 1f });
+            pool.Add(new UpgradeOption { name = "Kasırga Süresi", description = "Kasırga 2x uzun sürer", type = UpgradeType.WhirlwindDuration, value = 2f });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.DoubleStrike))
+        {
+            pool.Add(new UpgradeOption { name = "Çifte Şansı", description = "Çifte vuruş şansını +%25 artırır", type = UpgradeType.DoubleStrikeChance, value = 0.25f });
+            pool.Add(new UpgradeOption { name = "Çifte Kritik", description = "Çifte vuruşlar kritik olabilir", type = UpgradeType.DoubleStrikeCrit, value = 1 });
+        }
+        
+        if (unlockedSkills.Contains(UpgradeType.Earthquake))
+        {
+            pool.Add(new UpgradeOption { name = "Deprem Dalgaları", description = "5 şok dalgası yaratır", type = UpgradeType.EarthquakeWaves, value = 2 });
+            pool.Add(new UpgradeOption { name = "Deprem Menzili", description = "Şok dalgaları 2x uzağa gider", type = UpgradeType.EarthquakeRange, value = 6f });
+        }
+    }
+    
     // Method to be called by GameManager when leveling up
     public void OnLevelUp()
     {
